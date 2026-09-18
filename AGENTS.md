@@ -1,6 +1,6 @@
 # Maintaining Megapot Club
 
-Static React/TypeScript application. Build-time rendering produces HTML; no application server runs in production. Read `CONTRACTS` and the contract-specific invariants before changing their code.
+Static React/TypeScript application. Build-time rendering produces HTML; no application server runs in production. Read `CONTRACTS.md` and the contract-specific invariants before changing their code.
 
 - `src/App.tsx` and `src/navigation.ts`: fragment routes, desktop/mobile shell and restored views.
 - `src/chain.ts`, `src/playerReads.ts`, query modules: validated, cached public observations.
