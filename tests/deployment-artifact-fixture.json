@@ -1,0 +1,411 @@
+{
+  "testFixture": "Constructor ABIs copied from the reviewed local compiler artifact; synthetic bytecode intentionally tests evidence binding, not EVM deployment. Never deploy this fixture.",
+  "compiler": "synthetic-compiler-evidence-fixture",
+  "inputHash": "0b5e20cc06fb4748e64a9d835d4f026ee602614a421f4b3bfba6c128df58e5ff",
+  "contracts": {
+    "BaseUsdcVault": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "contract IERC20",
+              "name": "asset_",
+              "type": "address"
+            },
+            {
+              "internalType": "contract INativeJackpot",
+              "name": "jackpot_",
+              "type": "address"
+            },
+            {
+              "internalType": "contract INativeLPManager",
+              "name": "manager_",
+              "type": "address"
+            },
+            {
+              "internalType": "contract IAavePool",
+              "name": "pool_",
+              "type": "address"
+            },
+            {
+              "internalType": "contract IScaledToken",
+              "name": "aToken_",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumDeposit_",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        }
+      ],
+      "evm": {
+        "bytecode": {
+          "object": "60006000"
+        }
+      },
+      "deployedBytes": 4
+    },
+    "EthereumUsdcVault": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "components": [
+                {
+                  "internalType": "contract IERC20",
+                  "name": "token",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract ICctpMessenger",
+                  "name": "messenger",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract ICctpTransmitter",
+                  "name": "transmitter",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "peer",
+                  "type": "address"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "remoteToken",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "remoteMessenger",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "localDomain",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "remoteDomain",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "expectedChain",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "maximumBurn",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct CctpRoute.RouteConfig",
+              "name": "config",
+              "type": "tuple"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        }
+      ],
+      "evm": {
+        "bytecode": {
+          "object": "60006000"
+        }
+      },
+      "deployedBytes": 4
+    },
+    "BaseInbox": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "components": [
+                {
+                  "internalType": "contract IERC20",
+                  "name": "token",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract ICctpMessenger",
+                  "name": "messenger",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract ICctpTransmitter",
+                  "name": "transmitter",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "peer",
+                  "type": "address"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "remoteToken",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "remoteMessenger",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "localDomain",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "remoteDomain",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "expectedChain",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "maximumBurn",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct CctpRoute.RouteConfig",
+              "name": "config",
+              "type": "tuple"
+            },
+            {
+              "internalType": "contract BaseUsdcVault",
+              "name": "service_",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        }
+      ],
+      "evm": {
+        "bytecode": {
+          "object": "60006000"
+        }
+      },
+      "deployedBytes": 4
+    },
+    "PriceGuard": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "contract IAggregator",
+              "name": "eth_",
+              "type": "address"
+            },
+            {
+              "internalType": "contract IAggregator",
+              "name": "usdc_",
+              "type": "address"
+            },
+            {
+              "internalType": "contract IAggregator",
+              "name": "sequencer_",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxAge_",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "grace_",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        }
+      ],
+      "evm": {
+        "bytecode": {
+          "object": "60006000"
+        }
+      },
+      "deployedBytes": 4
+    },
+    "SharedEthVault": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "components": [
+                {
+                  "internalType": "contract IWETH",
+                  "name": "weth",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract IERC20",
+                  "name": "usdc",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract IFlashPool",
+                  "name": "pool",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract IScaledToken",
+                  "name": "aWeth",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract IERC20",
+                  "name": "variableDebt",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract ISwapRouter02",
+                  "name": "router",
+                  "type": "address"
+                },
+                {
+                  "internalType": "contract PriceGuard",
+                  "name": "prices",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint24",
+                  "name": "swapFee",
+                  "type": "uint24"
+                },
+                {
+                  "internalType": "address",
+                  "name": "service",
+                  "type": "address"
+                },
+                {
+                  "internalType": "enum ServicePosition.Kind",
+                  "name": "kind",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "expectedChain",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct SharedEthVault.Configuration",
+              "name": "c",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "borrowBps",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "reserveBps",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "maxDebt",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "minimumHealth",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "defenseHealth",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "slippageBps",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "flashPremiumBps",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "period",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "minimumDeposit",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct SharedEthVault.Risk",
+              "name": "r",
+              "type": "tuple"
+            },
+            {
+              "internalType": "string",
+              "name": "name_",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "symbol_",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        }
+      ],
+      "evm": {
+        "bytecode": {
+          "object": "60006000"
+        }
+      },
+      "deployedBytes": 4
+    },
+    "KeeperBudget": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "contract BaseUsdcVault",
+              "name": "vault_",
+              "type": "address"
+            },
+            {
+              "internalType": "contract CctpRoute",
+              "name": "route_",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        }
+      ],
+      "evm": {
+        "bytecode": {
+          "object": "60006000"
+        }
+      },
+      "deployedBytes": 4
+    }
+  }
+}

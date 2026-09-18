@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Club wallet integration fixture</title>
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <div
+      id="fixture"
+      style="
+        padding: 6px 12px;
+        background: #ffe8a6;
+        color: #221a00;
+        font: 12px system-ui;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      "
+    >
+      <strong>Test wallet · no real funds</strong
+      ><button id="revoke">Revoke fixture permission</button
+      ><button id="stall">Stall next reload</button>
+      <button id="hide">Hide fixture bar</button><output id="requests"></output>
+    </div>
+    <div id="root"></div>
+    <script type="module">
+      const key = "club-qa:wallet";
+      const calls = JSON.parse(sessionStorage.getItem("club-qa:calls") || "[]");
+      const events = new Map();
+      const render = () => {
+        document.getElementById("requests").textContent =
+          `Wallet requests: ${calls.join(", ") || "none"}`;
+        sessionStorage.setItem("club-qa:calls", JSON.stringify(calls));
+      };
+      render();
+      const provider = {
+        async request({ method }) {
+          if (
+            method === "eth_accounts" &&
+            sessionStorage.getItem("club-qa:stall")
+          )
+            await new Promise(() => {});
+          if (method === "eth_requestAccounts")
+            sessionStorage.removeItem("club-qa:stall");
+          calls.push(method);
+          render();
+          if (method === "eth_requestAccounts")
+            localStorage.setItem(key, "authorized");
+          if (method === "eth_accounts" || method === "eth_requestAccounts")
+            return localStorage.getItem(key) === "authorized"
+              ? ["0x1111111111111111111111111111111111111111"]
+              : [];
+          if (method === "eth_chainId") return "0x2105";
+          throw Object.assign(new Error("Fixture never signs or sends"), {
+            code: -32601,
+          });
+        },
+        on(name, fn) {
+          if (!events.has(name)) events.set(name, new Set());
+          events.get(name).add(fn);
+        },
+        removeListener(name, fn) {
+          events.get(name)?.delete(fn);
+        },
+      };
+      window.ethereum = provider;
+      const announce = () =>
+        window.dispatchEvent(
+          new CustomEvent("eip6963:announceProvider", {
+            detail: {
+              provider,
+              info: {
+                uuid: "fbe8b9f3-6e99-4c44-8f50-111111111111",
+                name: "Club test wallet",
+                rdns: "org.megapotclub.fixture",
+                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="%232448ec"/></svg>',
+              },
+            },
+          }),
+        );
+      window.addEventListener("eip6963:requestProvider", announce);
+      announce();
+      document.getElementById("stall").onclick = () => {
+        sessionStorage.setItem("club-qa:stall", "1");
+        location.reload();
+      };
+      document.getElementById("revoke").onclick = () => {
+        localStorage.removeItem(key);
+        location.reload();
+      };
+      document.getElementById("hide").onclick = () =>
+        (document.getElementById("fixture").hidden = true);
+      await import("/src/main.tsx");
+    </script>
+  </body>
+</html>

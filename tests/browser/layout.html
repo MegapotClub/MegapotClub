@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Club narrow viewport verification</title>
+    <style>
+      body {
+        font: 14px system-ui;
+        background: #cbd5e1;
+        color: #111;
+        margin: 16px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      main {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+      }
+      iframe {
+        display: block;
+        border: 0;
+        height: 844px;
+        background: white;
+      }
+      p {
+        margin: 0 0 6px;
+      }
+      label {
+        display: flex;
+        gap: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Real Club · constrained viewports</strong
+      ><label
+        >Data<select id="data">
+          <option value="">Live public data</option>
+          <option value="/tests/browser/retail.html">
+            Non-signing wallet fixture
+          </option>
+        </select></label
+      ><label
+        >Screen<select id="route">
+          <option value="draw">Draw</option>
+          <option value="tickets">Tickets</option>
+          <option value="tickets?draw=175">Active tickets (fixture)</option>
+          <option value="winnings">Balance</option>
+          <option value="results">Results</option>
+          <option value="invite">Invite</option>
+          <option value="lp">Liquidity</option>
+          <option value="about">About</option>
+        </select></label
+      ><label
+        >Theme<select id="theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select></label
+      >
+      <button id="hide-fixtures">Hide fixture bars</button>
+    </header>
+    <main>
+      <section>
+        <p>390 × 844</p>
+        <iframe title="390 pixel Club" width="390" src="/#draw"></iframe>
+      </section>
+      <section>
+        <p>320 × 844</p>
+        <iframe title="320 pixel Club" width="320" src="/#draw"></iframe>
+      </section>
+    </main>
+    <script>
+      const frames = [...document.querySelectorAll("iframe")];
+      document.querySelector("#hide-fixtures").onclick = () =>
+        frames.forEach((f) => {
+          const bar = f.contentDocument.getElementById("fixture");
+          if (bar) bar.style.display = "none";
+        });
+      document.querySelector("#route").onchange = (e) =>
+        frames.forEach(
+          (f) =>
+            (f.src =
+              (document.querySelector("#data").value || "/") +
+              "#" +
+              e.target.value),
+        );
+      document.querySelector("#data").onchange = () =>
+        frames.forEach(
+          (f) =>
+            (f.src =
+              (document.querySelector("#data").value || "/") +
+              "#" +
+              document.querySelector("#route").value),
+        );
+      document.querySelector("#theme").onchange = (e) =>
+        frames.forEach((f) => {
+          f.contentDocument.documentElement.dataset.theme = e.target.value;
+        });
+    </script>
+  </body>
+</html>

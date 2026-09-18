@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Club retail integration fixture</title>
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <div
+      id="fixture"
+      style="
+        padding: 6px 12px;
+        background: #ffe8a6;
+        color: #221a00;
+        font: 12px system-ui;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      "
+    >
+      <strong>Test wallet · no real funds</strong
+      ><button id="revoke">Revoke fixture permission</button
+      ><button id="stall">Stall next reload</button>
+      <button id="hide">Hide fixture bar</button><output id="requests"></output
+      ><output id="rpc"></output>
+      <label
+        >Balance fixture<select id="balance-state">
+          <option value="normal">$25 observed</option>
+          <option value="loading">Delay chain reads</option>
+          <option value="offline">Failed chain reads</option>
+          <option value="zero">Chain reports zero</option>
+          <option value="tiny">Chain reports $0.000001</option>
+        </select></label
+      >
+      <output id="balance-audit"></output>
+      <output id="claim-audit"></output>
+      <output id="draw-time-audit"></output>
+    </div>
+    <div id="root"></div>
+    <script type="module">
+      localStorage.setItem("megapot-club:locale", "en");
+      const { createPlayerRpcFixture, qaCodeHash } = await import(
+        "../fixtures/playerRpc.ts"
+      );
+      const { REGISTRY } = await import("/src/native.ts");
+      for (const pin of REGISTRY) pin.hash = qaCodeHash;
+      const balanceMode =
+        new URLSearchParams(location.search).get("balance") || "normal";
+      document.getElementById("balance-state").value = balanceMode;
+      document.getElementById("balance-state").onchange = (e) => {
+        const url = new URL(location.href);
+        url.searchParams.set("balance", e.target.value);
+        location.href = url.href;
+      };
+      const rpc = createPlayerRpcFixture({
+        rankedTickets: true,
+        usdcBalance:
+          balanceMode === "zero" ? 0n : balanceMode === "tiny" ? 1n : undefined,
+      });
+      const seenBalances = [], claimStates = [];
+      const drawModes = [],
+        auditStart = performance.now();
+      new MutationObserver(() => {
+        const claimState = document.querySelector('.claim-loading')?.textContent?.trim() ||
+          document.querySelector('.review-card')?.textContent?.trim() || '';
+        if (claimState && claimStates.at(-1) !== claimState) {
+          claimStates.push(claimState);
+          document.getElementById('claim-audit').textContent = JSON.stringify(claimStates);
+        }
+        const text =
+          document.querySelector(".retail-balance-amount")?.textContent ??
+          "(no amount)";
+        if (seenBalances.at(-1) !== text) {
+          seenBalances.push(text);
+          document.getElementById("balance-audit").textContent =
+            "Observed balance states: " + JSON.stringify(seenBalances);
+        }
+        const draw = document.querySelector(".upcoming-draw-time");
+        if (draw) {
+          const value = draw.textContent.trim();
+          const mode = /^\d{2}:\d{2}:\d{2}$/.test(value)
+            ? "countdown"
+            : "daily";
+          const target = draw.getAttribute("datetime");
+          const prior = drawModes.at(-1);
+          if (!prior || prior.mode !== mode || prior.target !== target) {
+            drawModes.push({
+              ms: Math.round(performance.now() - auditStart),
+              mode,
+              value,
+              target,
+            });
+            document.getElementById("draw-time-audit").textContent =
+              JSON.stringify(drawModes);
+          }
+        }
+      }).observe(document.getElementById("root"), {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+      const actualFetch = window.fetch.bind(window);
+      const delayedUntil = Date.now() + 5_000;
+      window.fetch = async (input, init) => {
+        const url = String(input);
+        if (url.startsWith("https://api.megapot.io/v1/")) {
+          const round = url.match(/rounds\/(\d+)/)?.[1] || "174";
+          if (url.includes("/wins"))
+            return Response.json({
+              data: [
+                {
+                  id: "qa-paid-1",
+                  wallet: rpc.account,
+                  round_id: round,
+                  user_ticket_id: "168001",
+                  claimed: true,
+                  claimed_tx_hash: "0x" + "99".repeat(32),
+                  normals: [1, 2, 4, 6, 8],
+                  bonusball: 5,
+                  amount: { amount: "1800000", decimals: 6 },
+                },
+              ],
+            });
+          if (url.includes("rounds?"))
+            return Response.json({ data: [], has_more: false });
+          if (url.includes("/players")) {
+            const seed = (await import("/src/recentWinsSnapshot.json")).default;
+            return Response.json({
+              data: seed.rounds.find((r) => r.id === round)?.wins ?? [],
+            });
+          }
+          return Response.json({
+            id: round,
+            status: "settled",
+            prize_tiers: Array.from({ length: 12 }, (_, i) => ({
+              tier_id: i,
+              normal_matches: Math.floor(i / 2),
+              bonusball_match: i % 2 === 1,
+              payout: { amount: String(i * 1000000), decimals: 6 },
+              ticket_count: 1,
+            })),
+          });
+        }
+        if (init?.method === "POST" && init.body) {
+          const body = JSON.parse(init.body);
+          if (body.method?.startsWith("eth_")) {
+            if (balanceMode === "offline")
+              throw new Error("Test fixture offline");
+            if (balanceMode === "loading" && Date.now() < delayedUntil)
+              await new Promise((resolve, reject) => {
+                const timer = setTimeout(resolve, delayedUntil - Date.now());
+                init.signal?.addEventListener(
+                  "abort",
+                  () => {
+                    clearTimeout(timer);
+                    reject(init.signal.reason);
+                  },
+                  { once: true },
+                );
+              });
+            if (new URLSearchParams(location.search).has('slowClaim') &&
+                body.method === 'eth_call' && body.params?.[0]?.data?.startsWith('0x1bf0ade0'))
+              await new Promise(resolve => setTimeout(resolve, 1800));
+            const reply = rpc.respondBody(body);
+            if (body.method === "eth_getBlockByNumber" && reply.result)
+              reply.result.timestamp =
+                "0x" + Math.floor(Date.now() / 1000).toString(16);
+            const response = Response.json(reply);
+            document.getElementById("rpc").textContent =
+              `RPC requests: ${rpc.counters.requests}, multicalls: ${rpc.counters.multicalls}, signing: ${rpc.counters.deniedWrites}`;
+            return response;
+          }
+        }
+        return actualFetch(input, init);
+      };
+      const key = "club-qa:wallet";
+      const calls = JSON.parse(sessionStorage.getItem("club-qa:calls") || "[]");
+      const events = new Map();
+      const render = () => {
+        document.getElementById("requests").textContent =
+          `Wallet requests: ${calls.join(", ") || "none"}`;
+        sessionStorage.setItem("club-qa:calls", JSON.stringify(calls));
+      };
+      render();
+      const provider = {
+        async request({ method }) {
+          if (
+            method === "eth_accounts" &&
+            sessionStorage.getItem("club-qa:stall")
+          )
+            await new Promise(() => {});
+          if (method === "eth_requestAccounts")
+            sessionStorage.removeItem("club-qa:stall");
+          calls.push(method);
+          render();
+          if (method === "eth_requestAccounts")
+            localStorage.setItem(key, "authorized");
+          if (method === "eth_accounts" || method === "eth_requestAccounts")
+            return localStorage.getItem(key) === "authorized"
+              ? ["0x1111111111111111111111111111111111111111"]
+              : [];
+          if (method === "eth_chainId") return "0x2105";
+          if (method === "eth_sendTransaction") throw Object.assign(
+            new Error("Test wallet rejected the request; no broadcast"), { code: 4001 });
+          throw Object.assign(new Error("Fixture never signs or sends"), {
+            code: -32601,
+          });
+        },
+        on(name, fn) {
+          if (!events.has(name)) events.set(name, new Set());
+          events.get(name).add(fn);
+        },
+        removeListener(name, fn) {
+          events.get(name)?.delete(fn);
+        },
+      };
+      window.ethereum = provider;
+      const announce = () =>
+        window.dispatchEvent(
+          new CustomEvent("eip6963:announceProvider", {
+            detail: {
+              provider,
+              info: {
+                uuid: "fbe8b9f3-6e99-4c44-8f50-111111111111",
+                name: "Club test wallet",
+                rdns: "org.megapotclub.fixture",
+                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="%232448ec"/></svg>',
+              },
+            },
+          }),
+        );
+      window.addEventListener("eip6963:requestProvider", announce);
+      announce();
+      document.getElementById("stall").onclick = () => {
+        sessionStorage.setItem("club-qa:stall", "1");
+        location.reload();
+      };
+      document.getElementById("revoke").onclick = () => {
+        localStorage.removeItem(key);
+        location.reload();
+      };
+      document.getElementById("hide").onclick = () =>
+        (document.getElementById("fixture").style.display = "none");
+      await import("/src/main.tsx");
+    </script>
+  </body>
+</html>

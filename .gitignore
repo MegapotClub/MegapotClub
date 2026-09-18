@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.build/
+.release/
+.env
+.env.*
+!.env.example
+*.local
+qa/
+.contract-build/

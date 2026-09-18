@@ -1,0 +1,719 @@
+{
+  "observedAt": 1789739530937,
+  "rounds": [
+    {
+      "id": "164",
+      "time": 1788541200,
+      "wins": [
+        {
+          "wallet": "0x54Fc69AF62b0Bf7665e820C0A35c644D849b0097",
+          "total_ticket_count": 1024,
+          "winning_ticket_count": 248,
+          "total_payout": {
+            "amount": "479443882",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 153,
+          "total_payout": {
+            "amount": "241302878",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xEc8A675289BEb9cbEDBE5E8c91059668E2192Df8",
+          "total_ticket_count": 130,
+          "winning_ticket_count": 37,
+          "total_payout": {
+            "amount": "90655323",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xeB0e6eCD0E78B0a84eCD9663a041F453C454a99D",
+          "total_ticket_count": 147,
+          "winning_ticket_count": 46,
+          "total_payout": {
+            "amount": "89457250",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xc63203C42be529E862368B31AD09BF5EAd30F7f6",
+          "total_ticket_count": 154,
+          "winning_ticket_count": 41,
+          "total_payout": {
+            "amount": "81896389",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "165",
+      "time": 1788627600,
+      "wins": [
+        {
+          "wallet": "0x1cD7968b1349c10AB92E070dBeC55F837AdC868B",
+          "total_ticket_count": 74,
+          "winning_ticket_count": 74,
+          "total_payout": {
+            "amount": "235262678",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 72,
+          "total_payout": {
+            "amount": "171030426",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xeB0e6eCD0E78B0a84eCD9663a041F453C454a99D",
+          "total_ticket_count": 183,
+          "winning_ticket_count": 53,
+          "total_payout": {
+            "amount": "117601638",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x5e99cd338cDd879bFf60a0b2B4344f1229A4A7A7",
+          "total_ticket_count": 174,
+          "winning_ticket_count": 40,
+          "total_payout": {
+            "amount": "91802100",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x54Fc69AF62b0Bf7665e820C0A35c644D849b0097",
+          "total_ticket_count": 175,
+          "winning_ticket_count": 40,
+          "total_payout": {
+            "amount": "89130473",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "166",
+      "time": 1788714000,
+      "wins": [
+        {
+          "wallet": "0x1cD7968b1349c10AB92E070dBeC55F837AdC868B",
+          "total_ticket_count": 64,
+          "winning_ticket_count": 64,
+          "total_payout": {
+            "amount": "267926420",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 148,
+          "total_payout": {
+            "amount": "201212311",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xF0F31F42cE151d273ef0131E55a73C4c5b2d92A3",
+          "total_ticket_count": 245,
+          "winning_ticket_count": 72,
+          "total_payout": {
+            "amount": "147469752",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xc63203C42be529E862368B31AD09BF5EAd30F7f6",
+          "total_ticket_count": 144,
+          "winning_ticket_count": 50,
+          "total_payout": {
+            "amount": "108457664",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x5e99cd338cDd879bFf60a0b2B4344f1229A4A7A7",
+          "total_ticket_count": 159,
+          "winning_ticket_count": 48,
+          "total_payout": {
+            "amount": "98640437",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "167",
+      "time": 1788800400,
+      "wins": [
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 240,
+          "total_payout": {
+            "amount": "387360579",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6cC47E23db1047c1E9F2a2C7F5083EA3B469cEb9",
+          "total_ticket_count": 501,
+          "winning_ticket_count": 128,
+          "total_payout": {
+            "amount": "271440046",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xF0F31F42cE151d273ef0131E55a73C4c5b2d92A3",
+          "total_ticket_count": 167,
+          "winning_ticket_count": 41,
+          "total_payout": {
+            "amount": "95676597",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x5e99cd338cDd879bFf60a0b2B4344f1229A4A7A7",
+          "total_ticket_count": 165,
+          "winning_ticket_count": 44,
+          "total_payout": {
+            "amount": "84191950",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xc63203C42be529E862368B31AD09BF5EAd30F7f6",
+          "total_ticket_count": 103,
+          "winning_ticket_count": 29,
+          "total_payout": {
+            "amount": "80549218",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "168",
+      "time": 1788886800,
+      "wins": [
+        {
+          "wallet": "0x43904de0e226cc20DD72968954af6B439404743D",
+          "total_ticket_count": 1500,
+          "winning_ticket_count": 404,
+          "total_payout": {
+            "amount": "750828112",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xC7D8E8D0809Bc8A6eAbEdd3D7617F5Bf3150ff39",
+          "total_ticket_count": 751,
+          "winning_ticket_count": 209,
+          "total_payout": {
+            "amount": "453979753",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6cC47E23db1047c1E9F2a2C7F5083EA3B469cEb9",
+          "total_ticket_count": 574,
+          "winning_ticket_count": 145,
+          "total_payout": {
+            "amount": "303488690",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 63,
+          "total_payout": {
+            "amount": "117477999",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x5e99cd338cDd879bFf60a0b2B4344f1229A4A7A7",
+          "total_ticket_count": 187,
+          "winning_ticket_count": 47,
+          "total_payout": {
+            "amount": "78772642",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "169",
+      "time": 1788973200,
+      "wins": [
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 566,
+          "total_payout": {
+            "amount": "3122545259",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6cC47E23db1047c1E9F2a2C7F5083EA3B469cEb9",
+          "total_ticket_count": 604,
+          "winning_ticket_count": 145,
+          "total_payout": {
+            "amount": "286144056",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1cD7968b1349c10AB92E070dBeC55F837AdC868B",
+          "total_ticket_count": 75,
+          "winning_ticket_count": 75,
+          "total_payout": {
+            "amount": "215210719",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x7b9Bd8b34EDb6af722e8233978a1540E79AAb344",
+          "total_ticket_count": 250,
+          "winning_ticket_count": 73,
+          "total_payout": {
+            "amount": "152441723",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xeB0e6eCD0E78B0a84eCD9663a041F453C454a99D",
+          "total_ticket_count": 153,
+          "winning_ticket_count": 37,
+          "total_payout": {
+            "amount": "105281770",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "170",
+      "time": 1789059600,
+      "wins": [
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 350,
+          "total_payout": {
+            "amount": "954031552",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6cC47E23db1047c1E9F2a2C7F5083EA3B469cEb9",
+          "total_ticket_count": 412,
+          "winning_ticket_count": 96,
+          "total_payout": {
+            "amount": "233923736",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1B54A93056a9201946897287fcEC67c9f85E6530",
+          "total_ticket_count": 388,
+          "winning_ticket_count": 98,
+          "total_payout": {
+            "amount": "217424997",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xeB0e6eCD0E78B0a84eCD9663a041F453C454a99D",
+          "total_ticket_count": 181,
+          "winning_ticket_count": 54,
+          "total_payout": {
+            "amount": "116509057",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x5e99cd338cDd879bFf60a0b2B4344f1229A4A7A7",
+          "total_ticket_count": 264,
+          "winning_ticket_count": 59,
+          "total_payout": {
+            "amount": "116324299",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "171",
+      "time": 1789146000,
+      "wins": [
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 250,
+          "total_payout": {
+            "amount": "365787901",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1B54A93056a9201946897287fcEC67c9f85E6530",
+          "total_ticket_count": 393,
+          "winning_ticket_count": 94,
+          "total_payout": {
+            "amount": "185935233",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6cC47E23db1047c1E9F2a2C7F5083EA3B469cEb9",
+          "total_ticket_count": 242,
+          "winning_ticket_count": 69,
+          "total_payout": {
+            "amount": "149203607",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x5e99cd338cDd879bFf60a0b2B4344f1229A4A7A7",
+          "total_ticket_count": 272,
+          "winning_ticket_count": 60,
+          "total_payout": {
+            "amount": "124746379",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x4a161DFbbb2C9D7cA8dDa698ffd241ea397A5190",
+          "total_ticket_count": 100,
+          "winning_ticket_count": 29,
+          "total_payout": {
+            "amount": "62814426",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "172",
+      "time": 1789232400,
+      "wins": [
+        {
+          "wallet": "0x57E21dEc890826bA80A07713249459cA21B840e0",
+          "total_ticket_count": 5724,
+          "winning_ticket_count": 1493,
+          "total_payout": {
+            "amount": "2970052845",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 131,
+          "total_payout": {
+            "amount": "195282259",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6cC47E23db1047c1E9F2a2C7F5083EA3B469cEb9",
+          "total_ticket_count": 225,
+          "winning_ticket_count": 67,
+          "total_payout": {
+            "amount": "187547810",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1B54A93056a9201946897287fcEC67c9f85E6530",
+          "total_ticket_count": 291,
+          "winning_ticket_count": 67,
+          "total_payout": {
+            "amount": "112142209",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xD421B0Ec7Ac38cF759EBa1Ac79b7566C0eAb508E",
+          "total_ticket_count": 100,
+          "winning_ticket_count": 27,
+          "total_payout": {
+            "amount": "71003255",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "173",
+      "time": 1789318800,
+      "wins": [
+        {
+          "wallet": "0x57E21dEc890826bA80A07713249459cA21B840e0",
+          "total_ticket_count": 17732,
+          "winning_ticket_count": 4693,
+          "total_payout": {
+            "amount": "222982340976",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 750,
+          "winning_ticket_count": 257,
+          "total_payout": {
+            "amount": "406960344",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x5e99cd338cDd879bFf60a0b2B4344f1229A4A7A7",
+          "total_ticket_count": 370,
+          "winning_ticket_count": 80,
+          "total_payout": {
+            "amount": "192515012",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1B54A93056a9201946897287fcEC67c9f85E6530",
+          "total_ticket_count": 202,
+          "winning_ticket_count": 50,
+          "total_payout": {
+            "amount": "114222193",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6cC47E23db1047c1E9F2a2C7F5083EA3B469cEb9",
+          "total_ticket_count": 104,
+          "winning_ticket_count": 44,
+          "total_payout": {
+            "amount": "70834285",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "174",
+      "time": 1789405200,
+      "wins": [
+        {
+          "wallet": "0x57E21dEc890826bA80A07713249459cA21B840e0",
+          "total_ticket_count": 60550,
+          "winning_ticket_count": 17139,
+          "total_payout": {
+            "amount": "33434177725",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xa1dD8b40adca8198865e8125E23A8E9626ECD81B",
+          "total_ticket_count": 1000,
+          "winning_ticket_count": 310,
+          "total_payout": {
+            "amount": "692163576",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x3aaeD9A23613EefC57d9D7A88B7Ce9a19CFd6B15",
+          "total_ticket_count": 350,
+          "winning_ticket_count": 96,
+          "total_payout": {
+            "amount": "320388735",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1cD7968b1349c10AB92E070dBeC55F837AdC868B",
+          "total_ticket_count": 91,
+          "winning_ticket_count": 91,
+          "total_payout": {
+            "amount": "244146553",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xa1314559D8585339D97fD55ea42a23c90168A1d2",
+          "total_ticket_count": 387,
+          "winning_ticket_count": 97,
+          "total_payout": {
+            "amount": "191306129",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "175",
+      "time": 1789491600,
+      "wins": [
+        {
+          "wallet": "0x57E21dEc890826bA80A07713249459cA21B840e0",
+          "total_ticket_count": 12891,
+          "winning_ticket_count": 3410,
+          "total_payout": {
+            "amount": "9098484972",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x42d8A5ef28c2D90Ab493F4546d8b9c2CEd321d8C",
+          "total_ticket_count": 2060,
+          "winning_ticket_count": 542,
+          "total_payout": {
+            "amount": "1018788451",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xa1dD8b40adca8198865e8125E23A8E9626ECD81B",
+          "total_ticket_count": 1698,
+          "winning_ticket_count": 464,
+          "total_payout": {
+            "amount": "925006456",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x3aaeD9A23613EefC57d9D7A88B7Ce9a19CFd6B15",
+          "total_ticket_count": 359,
+          "winning_ticket_count": 99,
+          "total_payout": {
+            "amount": "263124067",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1B54A93056a9201946897287fcEC67c9f85E6530",
+          "total_ticket_count": 498,
+          "winning_ticket_count": 125,
+          "total_payout": {
+            "amount": "249665521",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "176",
+      "time": 1789578000,
+      "wins": [
+        {
+          "wallet": "0x57E21dEc890826bA80A07713249459cA21B840e0",
+          "total_ticket_count": 2839,
+          "winning_ticket_count": 715,
+          "total_payout": {
+            "amount": "1430501504",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x42d8A5ef28c2D90Ab493F4546d8b9c2CEd321d8C",
+          "total_ticket_count": 1528,
+          "winning_ticket_count": 403,
+          "total_payout": {
+            "amount": "853918799",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6B58fbC8bADC9Fe737431Edf23Cd61326F94af9A",
+          "total_ticket_count": 424,
+          "winning_ticket_count": 111,
+          "total_payout": {
+            "amount": "411167081",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0xa1dD8b40adca8198865e8125E23A8E9626ECD81B",
+          "total_ticket_count": 700,
+          "winning_ticket_count": 162,
+          "total_payout": {
+            "amount": "335907314",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x1B54A93056a9201946897287fcEC67c9f85E6530",
+          "total_ticket_count": 563,
+          "winning_ticket_count": 143,
+          "total_payout": {
+            "amount": "315501051",
+            "decimals": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "177",
+      "time": 1789664400,
+      "wins": [
+        {
+          "wallet": "0xE51Edb159643795974eeAB45CFa6Ac09060f9a80",
+          "total_ticket_count": 1602,
+          "winning_ticket_count": 425,
+          "total_payout": {
+            "amount": "806675574",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x42d8A5ef28c2D90Ab493F4546d8b9c2CEd321d8C",
+          "total_ticket_count": 1140,
+          "winning_ticket_count": 307,
+          "total_payout": {
+            "amount": "613516206",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x57E21dEc890826bA80A07713249459cA21B840e0",
+          "total_ticket_count": 781,
+          "winning_ticket_count": 211,
+          "total_payout": {
+            "amount": "455891969",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x798dbc020C42C09d8F27f1795EEa83D137686a37",
+          "total_ticket_count": 400,
+          "winning_ticket_count": 286,
+          "total_payout": {
+            "amount": "322626164",
+            "decimals": 6
+          }
+        },
+        {
+          "wallet": "0x6B58fbC8bADC9Fe737431Edf23Cd61326F94af9A",
+          "total_ticket_count": 500,
+          "winning_ticket_count": 143,
+          "total_payout": {
+            "amount": "289549677",
+            "decimals": 6
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "deployments": [
+    { "product": "base-usdc", "state": "undeployed" },
+    { "product": "base-eth", "state": "undeployed" },
+    { "product": "l1-usdc", "state": "undeployed" },
+    { "product": "l1-eth", "state": "undeployed" }
+  ]
+}

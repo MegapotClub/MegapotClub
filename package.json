@@ -1,0 +1,59 @@
+{
+  "name": "megapot-club",
+  "version": "0.4.5",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "24.19.0",
+    "npm": "11.9.0"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 4173",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/entry-server.tsx --outDir .build/ssr && node scripts/finalize.mjs",
+    "test": "node --experimental-test-module-mocks --test tests/*.test.ts tests/*.test.mjs",
+    "contracts:build": "node scripts/compile-contracts.mjs",
+    "contracts:test": "node --test tests/*vault.test.mjs tests/*transport.test.mjs tests/*strategy.test.mjs",
+    "check": "tsc --noEmit && npm test",
+    "snapshot": "node scripts/capture-snapshot.ts",
+    "format": "prettier --write src scripts tests vite.config.ts tsconfig.json package.json index.html",
+    "verify:release": "node scripts/verify-release.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "verify:deployment": "node scripts/verify-deployment.mjs",
+    "contracts:fork": "node tests/integration/base-fork.mjs",
+    "snapshot:winners": "node scripts/capture-recent-wins.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/nunito-sans": "5.3.0",
+    "@fontsource-variable/outfit": "5.3.0",
+    "@rainbow-me/rainbowkit": "2.2.11",
+    "@tanstack/react-query": "5.103.1",
+    "@wagmi/core": "2.22.1",
+    "lucide-react": "1.46.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "viem": "2.56.5",
+    "wagmi": "2.19.5"
+  },
+  "devDependencies": {
+    "@ethereumjs/block": "10.1.3",
+    "@ethereumjs/common": "10.1.2",
+    "@ethereumjs/statemanager": "10.1.3",
+    "@ethereumjs/util": "10.1.2",
+    "@ethereumjs/vm": "10.1.3",
+    "@openzeppelin/contracts": "5.6.1",
+    "@types/node": "26.5.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "prettier": "3.6.2",
+    "solc": "0.8.37",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  },
+  "packageManager": "npm@11.9.0",
+  "overrides": {
+    "tmp": "0.2.7",
+    "ws@>=8.0.0 <8.21.0": "8.21.0"
+  }
+}

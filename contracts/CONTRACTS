@@ -1,0 +1,11 @@
+@cc [label:security] segregated-ownership
+Waiting lender units, committed deposits, issued or earned receipts, accepted exits, fixed cash claims and execution budgets MUST have disjoint ownership. Raw token balances MUST NOT determine who owns donations or justify consuming another category.
+
+@cc [label:security] immutable-custody
+Production custody contracts MUST NOT expose arbitrary calls, delegatecall, owner withdrawals, replaceable recipients or asset sweeps. External protocol governance remains an explicit deployment dependency.
+
+@cc [label:accounting] fixed-entitlements
+Once an aggregate batch is reconciled, every beneficiary's entitlement MUST be determined by its precommitted interval. Claim order or later prices MUST NOT reprice that entitlement. Earned receipt units MUST already be issued into claim escrow.
+
+@cc [label:liveness] bounded-progress
+User-facing progress MUST have an explicit finite work bound. Cancellation and zero-value settlement MUST retain an executable terminal path. A stopped investment path MUST preserve independently safe recovery and claims.
