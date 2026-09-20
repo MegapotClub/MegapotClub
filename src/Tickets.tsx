@@ -1,3 +1,4 @@
+import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { WinShare } from "./WinShare.tsx";
 import { Identity } from "./Identity.tsx";
 import { useState, type ReactNode } from "react";
@@ -112,6 +113,7 @@ export function Tickets({
     observation &&
       (query.isError || Date.now() - observation.blockTime * 1000 > 120_000),
   );
+  const delayed = useDelayedStatus(stale);
   const [editingAddress, setEditingAddress] = useState(false);
   const [draft, setDraft] = useState("");
   const [invalid, setInvalid] = useState(false);
@@ -543,7 +545,7 @@ export function Tickets({
                   )}
                 </>
               )}
-              {stale && (
+              {delayed && (
                 <p className="inline-notice" role="status">
                   {p("updatesDelayed")}
                 </p>

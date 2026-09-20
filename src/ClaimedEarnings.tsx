@@ -1,3 +1,4 @@
+import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { NumberBalls, RouteLink } from "./RetailPrimitives.tsx";
 import { ticketCopy } from "./ticketCopy.ts";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -58,12 +59,13 @@ export function ClaimedEarnings({
     ? older.hasNextPage
     : Boolean(recent.data?.nextCursor);
   const dates = useQuery({ ...roundDatesQuery(), enabled: groups.length > 0 });
+  const delayed = useDelayedStatus(recent.isError, account);
   if (recent.isSuccess && !groups.length) return null;
   return (
     <section className="claimed-earnings">
       <h3>{p("paid")}</h3>
       {recent.isPending && <p role="status">{p("checkingPrizes")}</p>}
-      {recent.isError && (
+      {recent.isError && (!recent.data || delayed) && (
         <p className="inline-notice" role="status">
           {recent.data ? p("updatesDelayed") : p("prizeReadError")}
         </p>

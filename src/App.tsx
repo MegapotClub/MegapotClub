@@ -1,3 +1,5 @@
+import { WinShareJackpot } from "./winShareContext.ts";
+import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -108,7 +110,7 @@ function Balls({
 }
 
 export default function App({ locale, messages: m, rootPath }: AppProps) {
-  const { snapshot, urls, setUrls, error } = useSnapshot(rootPath);
+  const { snapshot, urls, setUrls, error, live } = useSnapshot(rootPath);
   const { route, navigate: changeRoute } = useRoute();
   const view = route.view;
   const p = playCopy(locale);
@@ -150,6 +152,7 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
   const draw = snapshot.current;
   const recent = snapshot.recent;
   const stale = now - snapshot.blockTime * 1000 > 120_000 || error;
+  const updatesDelayed = useDelayedStatus(stale, urls.join("|"));
   const integer = (value: string) =>
     new Intl.NumberFormat(locale).format(BigInt(value));
   const labels: [string, string] = [m.winningNumbers, m.bonusNumber];
@@ -259,7 +262,7 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
   };
 
   return (
-    <>
+    <WinShareJackpot value={live && !stale ? snapshot.current.prizePool : null}>
       <SkipLink label={m.skip} target={mainRef} />
       <header className="site-header">
         <a
@@ -325,7 +328,7 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
                 locale={locale}
                 navigate={changeRoute}
               />
-              {(error || stale) && (
+              {updatesDelayed && (
                 <p className="inline-notice" role="status">
                   {p("updatesDelayed")}
                 </p>
@@ -334,7 +337,7 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
           )}
           {view === "play" && (
             <Purchase
-              stale={stale}
+              stale={updatesDelayed}
               draw={draw}
               locale={locale}
               urls={urls}
@@ -382,7 +385,7 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
               locale={locale}
               messages={m}
               navigate={changeRoute}
-              stale={stale}
+              stale={updatesDelayed}
             />
           )}
 
@@ -687,6 +690,6 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
           {toast}
         </div>
       )}
-    </>
+    </WinShareJackpot>
   );
 }

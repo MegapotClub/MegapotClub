@@ -1,3 +1,4 @@
+import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { formatDrawTime } from "./dateFormat.ts";
 import { Identity } from "./Identity.tsx";
 import { ArrowRight, ExternalLink } from "lucide-react";
@@ -25,11 +26,12 @@ function RecentWinners({
   locale: Locale;
 }) {
   const p = playCopy(locale);
+  const delayed = useDelayedStatus(query.isError);
   return (
     <section className="result-winners">
       <h3>{p("recent")}</h3>
       {query.isPending && <p role="status">{p("results")}…</p>}
-      {query.isError && (
+      {delayed && (
         <p className="inline-notice" role="status">
           {query.data ? p("updatesDelayed") : p("unknown")}
         </p>
@@ -61,6 +63,7 @@ export function ResultWinners({
 }) {
   const p = playCopy(locale),
     q = useQuery(winsQuery(draw));
+  const delayed = useDelayedStatus(q.isError);
   if (!q.data?.data.length)
     return q.isPending || q.isError ? (
       <p className="fine-print" role="status">
@@ -70,7 +73,7 @@ export function ResultWinners({
   return (
     <section className="result-winners">
       <h3>{p("recentWins")}</h3>
-      {q.isError && (
+      {delayed && (
         <p className="inline-notice" role="status">
           {p("updatesDelayed")}
         </p>
@@ -185,6 +188,7 @@ export function Results({
   const p = playCopy(locale),
     [older, setOlder] = useState("");
   const { history, winners } = useRecentWins();
+  const historyDelayed = useDelayedStatus(history.isError);
   const stats = history.data.stats;
   const zone = useLocalTimeZone();
   const earlier = Object.entries(history.data.dates)
@@ -230,7 +234,7 @@ export function Results({
           </div>
         )}
       </section>
-      {history.isError && (
+      {historyDelayed && (
         <p className="inline-notice" role="status">
           {p("updatesDelayed")}
         </p>

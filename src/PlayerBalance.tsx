@@ -1,3 +1,4 @@
+import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -137,6 +138,7 @@ export function PlayerBalance({
     stale =
       query.isError ||
       Boolean(data && Date.now() - data.blockTime * 1000 > 120_000);
+  const delayed = useDelayedStatus(stale, wallet.account ?? "");
   useEffect(() => {
     run.current++;
     setReview(null);
@@ -286,7 +288,7 @@ export function PlayerBalance({
             </span>
           </>
         )}
-        {wallet.account && data && stale && (
+        {wallet.account && data && delayed && (
           <p className="inline-notice" role="status">
             {p("updatesDelayed")}
           </p>

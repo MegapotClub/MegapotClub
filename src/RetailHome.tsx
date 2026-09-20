@@ -1,3 +1,4 @@
+import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { UpcomingDrawTime } from "./UpcomingDrawTime.tsx";
 import { Identity } from "./Identity.tsx";
 import { ArrowRight, CircleHelp, Clock3, ShieldCheck } from "lucide-react";
@@ -11,12 +12,13 @@ import { useRecentWins } from "./useRecentWins.ts";
 export function RecentWins({ locale }: { locale: Locale }) {
   const p = playCopy(locale),
     { history, winners: query } = useRecentWins();
+  const delayed = useDelayedStatus(history.isError || query.isError);
   const winners = query.data?.data ?? [];
 
   return (
     <div className="recent-wins-strip" aria-label={p("recentWins")}>
       {query.isPending && <span role="status">{p("results")}…</span>}
-      {(history.isError || query.isError) && (
+      {delayed && (
         <span role="status">
           {query.data ? p("updatesDelayed") : p("unknown")}
         </span>
