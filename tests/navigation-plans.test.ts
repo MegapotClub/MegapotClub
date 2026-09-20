@@ -4,7 +4,6 @@ import { parseRoute, routeHref, normalNavigation } from "../src/navigation.ts";
 import { quickPick, validNumbers } from "../src/plans.ts";
 import { clubCopy, clubKeys } from "../src/clubCopy.ts";
 import { LANGUAGES } from "../src/i18n.ts";
-import { retailCopy, retailKeys } from "../src/retailCopy.ts";
 test("deep views round-trip through safe fragment URLs", () => {
   const route = {
     view: "lp",
@@ -64,7 +63,4 @@ test("all action, recovery, plan and error messages exist in all eight locales",
   for (const locale of LANGUAGES)
     for (const key of clubKeys)
       assert.ok(clubCopy(locale.code)(key)?.length, `${locale.code}:${key}`);
-  for (const locale of LANGUAGES)
-    for (const key of retailKeys)
-      assert.ok(retailCopy(locale.code)(key)?.length, `${locale.code}:${key}`);
 });

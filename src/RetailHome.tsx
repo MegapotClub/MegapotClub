@@ -22,17 +22,15 @@ export function RecentWins({ locale }: { locale: Locale }) {
         </span>
       )}
       {winners.map((w) => (
-        <a
+        <span
+          className="recent-win"
           key={`${w.round_id}:${w.wallet.toLowerCase()}`}
-          href={`https://basescan.org/address/${w.wallet}`}
-          target="_blank"
-          rel="noopener noreferrer"
         >
           <span>
             <Identity address={w.wallet} prefixOnly />
           </span>{" "}
           {p("win")} <strong>${money(w.total_payout.amount, locale, 2)}</strong>
-        </a>
+        </span>
       ))}
     </div>
   );

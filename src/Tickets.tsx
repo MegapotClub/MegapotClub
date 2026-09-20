@@ -1,13 +1,13 @@
-import { formatDrawTime } from "./dateFormat.ts";
+import { WinShare } from "./WinShare.tsx";
 import { Identity } from "./Identity.tsx";
 import { useState, type ReactNode } from "react";
+import { readWalletDrawWins } from "./megapotApi.ts";
 import { useQuery } from "@tanstack/react-query";
 import { getAddress, isAddress } from "viem";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
   RefreshCw,
   Search,
   Ticket,
@@ -23,8 +23,7 @@ import type { Snapshot, TicketRecord, Draw } from "./model.ts";
 import { normalNavigation, routeHref, type Route } from "./navigation.ts";
 import { ticketScope, ticketQueryOptions } from "./ticketQuery.ts";
 import { ticketCopy } from "./ticketCopy.ts";
-import { TicketArchive } from "./TicketArchive.tsx";
-import { DrawTime, useLocalTimeZone } from "./drawTime.tsx";
+import { DrawTime } from "./drawTime.tsx";
 import { experienceCopy } from "./experienceCopy.ts";
 import { PaperTicket, NumberBalls, RouteLink } from "./RetailPrimitives.tsx";
 import { playCopy } from "./playCopy.ts";
@@ -103,7 +102,7 @@ export function Tickets({
     wallet.account ?? undefined,
     snapshot.current.id,
   );
-  const archive = route.period === "past";
+  const archive = false;
   const query = useQuery({
     ...ticketQueryOptions(urls, scope),
     enabled: Boolean(scope.address) && !archive,
@@ -118,17 +117,12 @@ export function Tickets({
   const [invalid, setInvalid] = useState(false);
   const t = ticketCopy(locale);
   const e = experienceCopy(locale);
-  const tr = (key: keyof Messages, params?: Record<string, string | number>) =>
-    interpolate(m[key], params);
   const draw =
     observation?.draw ??
     [snapshot.current, ...snapshot.recent].find((d) => d.id === scope.drawId);
   const own = Boolean(
     wallet.account &&
       wallet.account.toLowerCase() === scope.address?.toLowerCase(),
-  );
-  const choices = [snapshot.current, ...snapshot.recent].map((d) =>
-    observation?.draw.id === d.id ? observation.draw : d,
   );
   const pages = Math.max(1, Math.ceil((observation?.total ?? 0) / PAGE_SIZE));
   const page = Math.min(route.page ?? 1, pages);
@@ -138,6 +132,19 @@ export function Tickets({
         page * PAGE_SIZE,
       )
     : [];
+  const historicalAwards = useQuery({
+    queryKey: [
+      "megapot-api",
+      "wallet-draw-wins",
+      scope.address?.toLowerCase(),
+      scope.drawId,
+    ],
+    queryFn: ({ signal }) =>
+      readWalletDrawWins(scope.address!, scope.drawId, signal),
+    enabled: own && !archive && Boolean(draw?.settled),
+    staleTime: 300_000,
+    retry: false,
+  });
   const amounts = new Map(
     player && player.account.toLowerCase() === scope.address?.toLowerCase()
       ? player!.settledTickets
@@ -145,8 +152,9 @@ export function Tickets({
           .map((ticket) => [ticket.ticketId.toString(), ticket.net] as const)
       : [],
   );
-  const zone = useLocalTimeZone();
-  const date = (timestamp: number) => formatDrawTime(timestamp, locale, zone);
+  for (const win of historicalAwards.data?.data ?? [])
+    if (!amounts.has(win.user_ticket_id))
+      amounts.set(win.user_ticket_id, BigInt(win.amount.amount));
   const integer = (n: number) => new Intl.NumberFormat(locale).format(n);
   const past = archive || scope.drawId !== snapshot.current.id;
   const archiveRoute: Route = {
@@ -292,20 +300,13 @@ export function Tickets({
               autoCapitalize="none"
               required
               aria-invalid={invalid || undefined}
-              aria-describedby={
-                invalid
-                  ? "ticket-address-error ticket-address-help"
-                  : "ticket-address-help"
-              }
+              aria-describedby={invalid ? "ticket-address-error" : undefined}
             />
             <button className="button button-primary" type="submit">
               {m.lookup}
               <ArrowRight size={17} />
             </button>
           </div>
-          <p id="ticket-address-help" className="fine-print">
-            {t("publicLinkNote")}
-          </p>
           {invalid && (
             <p id="ticket-address-error" className="form-error" role="alert">
               {m.invalidAddress}
@@ -338,81 +339,6 @@ export function Tickets({
           })}
         </nav>
       )}
-      {scope.address && !archive && (
-        <div className={`ticket-toolbar ${!past ? "upcoming-toolbar" : ""}`}>
-          {past && (
-            <>
-              <div className="ticket-draw-picker">
-                <label htmlFor="ticket-draw">{m.chooseDraw}</label>
-                <div className="select-wrap">
-                  <select
-                    id="ticket-draw"
-                    value={scope.drawId}
-                    onChange={(e) => navigate(selectDraw(e.target.value))}
-                  >
-                    {!choices.some((d) => d.id === scope.drawId) && (
-                      <option value={scope.drawId}>
-                        {tr("drawNumber", { id: scope.drawId })}
-                      </option>
-                    )}
-                    {choices.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.id === snapshot.current.id ? `${m.draw} · ` : ""}#
-                        {d.id} · {date(d.closesAt)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} />
-                </div>
-              </div>
-              <nav
-                className="ticket-draw-navigation"
-                aria-label={t("browseDraws")}
-              >
-                {BigInt(scope.drawId) > 1n ? (
-                  link(
-                    selectDraw(String(BigInt(scope.drawId) - 1n)),
-                    <ArrowLeft size={19} />,
-                    "ticket-icon-button",
-                    t("previousDraw"),
-                  )
-                ) : (
-                  <button
-                    className="ticket-icon-button"
-                    disabled
-                    aria-label={t("previousDraw")}
-                  >
-                    <ArrowLeft size={19} />
-                  </button>
-                )}
-                {BigInt(scope.drawId) < BigInt(snapshot.current.id) ? (
-                  link(
-                    selectDraw(String(BigInt(scope.drawId) + 1n)),
-                    <ArrowRight size={19} />,
-                    "ticket-icon-button",
-                    t("nextDraw"),
-                  )
-                ) : (
-                  <button
-                    className="ticket-icon-button"
-                    disabled
-                    aria-label={t("nextDraw")}
-                  >
-                    <ArrowRight size={19} />
-                  </button>
-                )}
-              </nav>
-              {scope.drawId !== snapshot.current.id &&
-                link(
-                  selectDraw(snapshot.current.id),
-                  m.draw,
-                  "text-button ticket-current-link",
-                )}
-            </>
-          )}
-        </div>
-      )}
-
       {!scope.address && (!walletReady || wallet.connecting) ? (
         <p role="status" className="inline-notice">
           {t("restoring")}
@@ -427,16 +353,6 @@ export function Tickets({
           <WalletButton locale={locale} />
           <span className="fine-print">{t("readOnly")}</span>
         </div>
-      ) : archive ? (
-        <TicketArchive
-          locale={locale}
-          messages={m}
-          urls={urls}
-          address={scope.address}
-          publicAddress={route.address}
-          draws={snapshot.recent}
-          navigate={navigate}
-        />
       ) : (
         <>
           {query.isError && (
@@ -574,6 +490,18 @@ export function Tickets({
                               <ArrowRight size={16} />
                             </>,
                             "ticket-prize-link",
+                          )}
+                        {draw?.settled &&
+                          own &&
+                          (amounts.get(ticket.id) ?? 0n) > 0n && (
+                            <WinShare
+                              win={{
+                                amount: amounts.get(ticket.id)!.toString(),
+                                account: scope.address!,
+                                date: draw.closesAt,
+                              }}
+                              locale={locale}
+                            />
                           )}
                       </article>
                     ))}

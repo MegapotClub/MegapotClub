@@ -50,9 +50,11 @@ export function UpcomingDrawTime({
     >
       <CalendarDays size={15} aria-hidden="true" />
       <span aria-hidden="true">
-        {remaining && now !== null
-          ? countdown(expectedAt, now).join(":")
-          : daily}
+        {now !== null && now >= expectedAt * 1000
+          ? p("drawingNow")
+          : remaining && now !== null
+            ? countdown(expectedAt, now).join(":")
+            : daily}
       </span>
     </time>
   );

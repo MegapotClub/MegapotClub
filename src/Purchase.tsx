@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
   CircleHelp,
+  LoaderCircle,
+  ExternalLink,
   Minus,
   Plus,
   Shuffle,
@@ -12,50 +14,61 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Locale } from "./i18n.ts";
-import { money, phase, type Draw } from "./model.ts";
+import { money, type Draw } from "./model.ts";
 import { quickPick, validNumbers } from "./plans.ts";
 import { playCopy } from "./playCopy.ts";
+import { clubCopy, errorCopy } from "./clubCopy.ts";
+import { EXPLORER } from "./config.ts";
 import { Modal } from "./Modal.tsx";
-import { DrawTime } from "./drawTime.tsx";
-import { WalletButton } from "./WalletButton.tsx";
-import { useWallet } from "./wallet.ts";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { switchBase, useWallet } from "./wallet.ts";
+import { reviewAction, type Review } from "./native.ts";
+import {
+  submitReview,
+  useTransactions,
+  restorePurchase,
+} from "./transactions.ts";
 import { RouteLink, PaperTicket, NumberBalls } from "./RetailPrimitives.tsx";
 import {
   PURCHASE_DRAFT_KEY,
+  emptyDraft,
   parsePurchaseDraft,
-  purchaseIntent,
+  purchaseAction,
+  purchaseDraftKey,
+  type PurchaseAction,
   type PurchaseDraft,
 } from "./purchaseDraft.ts";
+import { resolveReferrer } from "./referral.ts";
+import { UpcomingDrawTime } from "./UpcomingDrawTime.tsx";
 import type { Route } from "./navigation.ts";
 
 export function Purchase({
   draw,
   locale,
+  urls,
   route,
   navigate,
-  observedAt,
   stale,
 }: {
-  observedAt: number;
   stale: boolean;
   draw: Draw;
   locale: Locale;
+  urls: string[];
   route: Route;
   navigate: (r: Route, replace?: boolean) => void;
 }) {
   const p = playCopy(locale),
-    wallet = useWallet();
-  const [draft, setDraft] = useState<PurchaseDraft>({
-    schema: 1,
-    draw: draw.id,
-    quantity: 10,
-    rows: [{ numbers: [], bonus: 1 }],
-    mode: "quick",
-  });
+    c = clubCopy(locale),
+    wallet = useWallet(),
+    { openConnectModal } = useConnectModal();
+  const [draft, setDraft] = useState<PurchaseDraft>(emptyDraft(draw.id));
+  const changeDraft = (update: (draft: PurchaseDraft) => PurchaseDraft) =>
+    setDraft((d) => ({ ...update(d), revision: (d.revision ?? 0) + 1 }));
   const [ready, setReady] = useState(false),
     [storageError, setStorageError] = useState(false),
-    [changed, setChanged] = useState(false),
-    [editing, setEditing] = useState<number | null>(null),
+    [editing, setEditing] = useState<{ row: number; slot: number } | null>(
+      null,
+    ),
     [help, setHelp] = useState(false);
   useEffect(() => {
     try {
@@ -63,10 +76,11 @@ export function Purchase({
         JSON.parse(localStorage.getItem(PURCHASE_DRAFT_KEY) ?? "null"),
         draw,
       );
-      if (saved) {
-        setChanged(saved.draw !== draw.id);
-        setDraft({ ...saved, draw: draw.id });
-      }
+      setDraft({
+        ...(saved ?? emptyDraft(draw.id)),
+        draw: draw.id,
+        ...(route.ref !== undefined ? { invitation: route.ref } : {}),
+      });
     } catch {
       setStorageError(true);
     }
@@ -75,7 +89,6 @@ export function Purchase({
   useEffect(() => {
     if (!ready) return;
     setDraft((d) => (d.draw === draw.id ? d : { ...d, draw: draw.id }));
-    if (draft.draw !== draw.id) setChanged(true);
     try {
       localStorage.setItem(PURCHASE_DRAFT_KEY, JSON.stringify(draft));
     } catch {
@@ -89,24 +102,310 @@ export function Purchase({
     draft.rows.every((r) =>
       validNumbers(r.numbers, r.bonus, draw.ballMax, draw.bonusMax),
     );
-  const open = phase(draw, Date.now()) === "open";
+  const open = !draw.locked;
+  const randomRow = () => quickPick(draw.ballMax, draw.bonusMax);
+  // Mode changes retain the quantity and complete previously uninitialized rows.
+  useEffect(() => {
+    if (!ready) return;
+    setDraft((d) => {
+      const mode = choose ? "choose" : "quick";
+      if (
+        d.mode === mode &&
+        (!choose || d.rows.every((r) => r.numbers.length === 5))
+      )
+        return d;
+      const quantity = d.mode === "choose" ? d.rows.length : d.quantity;
+      return {
+        ...d,
+        mode,
+        quantity,
+        revision: (d.revision ?? 0) + 1,
+        rows: choose
+          ? Array.from({ length: quantity }, (_, i) => {
+              const row = d.rows[i];
+              return row && row.numbers.length === 5 ? row : randomRow();
+            })
+          : d.rows,
+      };
+    });
+  }, [choose, ready]);
+  useEffect(() => {
+    if (ready && route.ref !== undefined)
+      setDraft((d) =>
+        d.invitation === route.ref
+          ? d
+          : { ...d, invitation: route.ref, revision: (d.revision ?? 0) + 1 },
+      );
+  }, [ready, route.ref]);
+  let invalidInvitation = false;
+  try {
+    resolveReferrer(draft.invitation);
+  } catch {
+    invalidInvitation = true;
+  }
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const updateRow = (numbers: number[], bonus: number) =>
-    setDraft((d) => ({
+    changeDraft((d) => ({
       ...d,
-      rows: d.rows.map((r, i) => (i === editing ? { numbers, bonus } : r)),
+      rows: d.rows.map((r, i) => (i === editing?.row ? { numbers, bonus } : r)),
     }));
-  const active = editing === null ? null : draft.rows[editing];
+  const active = editing === null ? null : draft.rows[editing.row];
   const checkout = () => {
     const next = {
       ...draft,
       mode: choose ? ("choose" as const) : ("quick" as const),
     };
     setDraft(next);
-    if (valid) {
-      purchaseIntent(next, draw, wallet.account, route.ref);
-      navigate({ ...route, checkout: true });
+    if (!valid) return;
+    // The wallet library's connect dialog cannot stack above the native checkout dialog.
+    if (!wallet.account && openConnectModal) openConnectModal();
+    else navigate({ ...route, checkout: true });
+  };
+  const connectFromCheckout = () => {
+    navigate({ ...route, checkout: undefined });
+    openConnectModal?.();
+  };
+
+  /** @cc [label:security] explicit-purchase-steps
+   * Restoring and reviewing an order never submits it. Each approval and purchase requires its
+   * own click. Submitted account, order and draft identity remain immutable across navigation.
+   */
+  const [order, setOrder] = useState<PurchaseAction | null>(null),
+    [review, setReview] = useState<Review | null>(null),
+    [reviewRevision, setReviewRevision] = useState(0),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const run = useRef(0),
+    request = useRef<AbortController | null>(null),
+    busyRef = useRef(false);
+  const entries = useTransactions();
+  const accountMatches =
+    order?.recipient.toLowerCase() === wallet.account?.toLowerCase();
+  const orderEntries =
+    accountMatches && order
+      ? entries.filter(
+          (e) =>
+            e.account.toLowerCase() === order.recipient.toLowerCase() &&
+            e.chainId === 8453 &&
+            e.purchase?.orderId === order.orderId,
+        )
+      : [];
+  const entry = orderEntries.at(-1) ?? null;
+  const done = entry?.kind === "purchase" && entry.status === "confirmed";
+  const reviewValid =
+    review !== null &&
+    accountMatches &&
+    wallet.chainId === 8453 &&
+    wallet.revision === reviewRevision &&
+    review.account.toLowerCase() === wallet.account?.toLowerCase();
+  const stage =
+    !wallet.account || wallet.chainId !== 8453
+      ? "connect"
+      : done
+        ? "done"
+        : entry && ["wallet", "pending", "unknown"].includes(entry.status)
+          ? "sent"
+          : entry && ["reverted", "replaced"].includes(entry.status)
+            ? "failed"
+            : !reviewValid
+              ? "review"
+              : review!.calls[0].kind === "approve"
+                ? "approve"
+                : "confirm";
+  useEffect(() => {
+    if (
+      route.checkout &&
+      order &&
+      accountMatches &&
+      orderEntries.some((e) =>
+        ["wallet", "pending", "unknown", "confirmed"].includes(e.status),
+      )
+    )
+      return;
+    run.current++;
+    request.current?.abort();
+    request.current = null;
+    busyRef.current = false;
+    setBusy(false);
+    setReview(null);
+    setError("");
+    setOrder(null);
+    if (
+      !route.checkout ||
+      !ready ||
+      !wallet.account ||
+      invalidInvitation ||
+      draft.mode !== (choose ? "choose" : "quick") ||
+      !valid ||
+      (route.ref !== undefined && route.ref !== draft.invitation)
+    )
+      return;
+    const draftKey = purchaseDraftKey(draftRef.current);
+    const previous = [...entries]
+      .reverse()
+      .find(
+        (e) =>
+          e.account.toLowerCase() === wallet.account!.toLowerCase() &&
+          e.chainId === 8453 &&
+          e.purchase &&
+          (e.purchase.draftKey === draftKey ||
+            ["wallet", "pending", "unknown"].includes(e.status)),
+      );
+    const restored = previous?.purchase
+      ? restorePurchase(previous.purchase)
+      : null;
+    try {
+      setOrder(
+        restored ?? purchaseAction(draftRef.current, draw, wallet.account),
+      );
+    } catch (e) {
+      setError(errorCopy(locale, e));
+    }
+    return () => {
+      run.current++;
+      request.current?.abort();
+    };
+  }, [
+    route.checkout,
+    ready,
+    wallet.account,
+    wallet.revision,
+    draft.mode,
+    route.ref,
+    invalidInvitation,
+    draft.invitation,
+    valid,
+  ]);
+  const cleared = useRef(new Set<string>());
+  useEffect(() => {
+    if (!entry || !accountMatches) return;
+    if (
+      entry.kind === "purchase" &&
+      entry.status === "confirmed" &&
+      !cleared.current.has(entry.id)
+    ) {
+      cleared.current.add(entry.id);
+      if (entry.purchase?.draftKey === purchaseDraftKey(draftRef.current)) {
+        setDraft(emptyDraft(draw.id));
+        navigate({ ...route, ref: undefined }, true);
+      }
+    } else if (entry.kind === "approve" && entry.status === "confirmed") {
+      setReview(null);
+      setError("");
+    }
+  }, [entry?.id, entry?.status, accountMatches]);
+  const prepare = async () => {
+    if (!order || busyRef.current || !accountMatches) return;
+    const seq = ++run.current,
+      controller = new AbortController();
+    request.current?.abort();
+    request.current = controller;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await reviewAction(
+        urls,
+        order.recipient,
+        order,
+        controller.signal,
+      );
+      if (seq === run.current && !controller.signal.aborted) {
+        setReview(next);
+        setReviewRevision(wallet.revision);
+      }
+    } catch (e) {
+      if (seq === run.current && !controller.signal.aborted) {
+        setReview(null);
+        setError(errorCopy(locale, e));
+      }
+    } finally {
+      if (seq === run.current) {
+        setBusy(false);
+        busyRef.current = false;
+      }
     }
   };
+  useEffect(() => {
+    if (
+      route.checkout &&
+      stage === "review" &&
+      order &&
+      !busyRef.current &&
+      !error
+    )
+      void prepare();
+  }, [route.checkout, stage, order?.orderId, wallet.revision, entry?.status]);
+  useEffect(() => {
+    if (
+      !route.checkout ||
+      !order ||
+      !["approve", "confirm", "review"].includes(stage)
+    )
+      return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void prepare();
+    };
+    const interval = setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [route.checkout, stage, order?.orderId, wallet.revision]);
+  const send = async () => {
+    if (
+      !review ||
+      !order ||
+      busyRef.current ||
+      !["approve", "confirm"].includes(stage)
+    )
+      return;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    const controller = new AbortController(),
+      seq = ++run.current;
+    request.current?.abort();
+    request.current = controller;
+    try {
+      await submitReview(
+        urls,
+        review,
+        reviewRevision,
+        controller.signal,
+        (fresh) => {
+          if (!controller.signal.aborted) {
+            setReview(fresh);
+            setReviewRevision(wallet.revision);
+          }
+        },
+      );
+    } catch (e) {
+      if (!controller.signal.aborted) setError(errorCopy(locale, e));
+    } finally {
+      if (seq === run.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }
+  };
+  const retry = () => {
+    setReview(null);
+    setError("");
+    setOrder(purchaseAction(draftRef.current, draw, wallet.account!));
+  };
+  const orderTickets = order?.tickets ?? (choose ? draft.rows : []);
+  const orderCount = order ? order.tickets.length : count;
+  const orderTotal = (
+    reviewValid
+      ? BigInt(review!.amount)
+      : (order ? order.unitPrice : BigInt(draw.ticketPrice)) *
+        BigInt(orderCount)
+  ).toString();
+  const totalText = `$${money(done && entry?.purchaseReceipt ? entry.purchaseReceipt.paid : orderTotal, locale, 2)}`;
+  const call = reviewValid ? review!.calls[0] : null;
   return (
     <section className="retail-page purchase-page">
       <div className="retail-page-title">
@@ -129,7 +428,7 @@ export function Purchase({
       </div>
       <nav className="retail-segment" aria-label={p("buyTickets")}>
         <RouteLink
-          to={{ view: "play", ref: route.ref }}
+          to={{ view: "play", ref: draft.invitation }}
           navigate={navigate}
           className={!choose ? "selected" : ""}
         >
@@ -137,7 +436,7 @@ export function Purchase({
           {p("quickPlay")}
         </RouteLink>
         <RouteLink
-          to={{ view: "play", choose: true, ref: route.ref }}
+          to={{ view: "play", choose: true, ref: draft.invitation }}
           navigate={navigate}
           className={choose ? "selected" : ""}
         >
@@ -145,12 +444,25 @@ export function Purchase({
           {p("choose")}
         </RouteLink>
       </nav>
-      <p className="purchase-provenance">
-        {p("lastChecked")} ·{" "}
-        {new Date(observedAt * 1000).toLocaleString(locale)}
-        {stale ? ` · ${p("estimate")}` : ""}
-      </p>
-      {changed && <p className="inline-notice">{p("selectionExpired")}</p>}
+      {stale && (
+        <p className="inline-notice" role="status">
+          {p("updatesDelayed")}
+        </p>
+      )}
+      {invalidInvitation && (
+        <p className="form-error" role="alert">
+          {p("invalidInvitation")}{" "}
+          <button
+            className="text-button"
+            onClick={() => {
+              changeDraft((d) => ({ ...d, invitation: undefined }));
+              navigate({ ...route, ref: undefined, checkout: undefined }, true);
+            }}
+          >
+            {p("clearInvitation")}
+          </button>
+        </p>
+      )}
       {storageError && (
         <p className="inline-notice">{p("storageUnavailable")}</p>
       )}
@@ -158,10 +470,14 @@ export function Purchase({
         <>
           <div className="ticket-stage">
             <div className="ticket-stage-time">
-              <DrawTime timestamp={draw.closesAt} locale={locale} />
+              <UpcomingDrawTime timestamp={draw.closesAt} locale={locale} />
             </div>
-            <PaperTicket numbers={[]} bonus={null} locale={locale} />
-            <p>{p("quickHelp")}</p>
+            <PaperTicket
+              numbers={[]}
+              bonus={null}
+              locale={locale}
+              count={count}
+            />
           </div>
           <div className="quantity-heading">
             <h2>{p("tickets")}</h2>
@@ -170,7 +486,7 @@ export function Purchase({
                 <button
                   className={draft.quantity === n ? "selected" : ""}
                   key={n}
-                  onClick={() => setDraft((d) => ({ ...d, quantity: n }))}
+                  onClick={() => changeDraft((d) => ({ ...d, quantity: n }))}
                 >
                   {n}
                 </button>
@@ -183,7 +499,7 @@ export function Purchase({
               disabled={draft.quantity <= 1}
               aria-label={p("fewer")}
               onClick={() =>
-                setDraft((d) => ({
+                changeDraft((d) => ({
                   ...d,
                   quantity: Math.max(1, d.quantity - 1),
                 }))
@@ -200,7 +516,7 @@ export function Purchase({
               value={draft.quantity}
               onChange={(e) => {
                 const n = Number(e.target.value);
-                setDraft((d) => ({
+                changeDraft((d) => ({
                   ...d,
                   quantity: Number.isInteger(n)
                     ? Math.max(1, Math.min(100, n))
@@ -212,7 +528,7 @@ export function Purchase({
               disabled={draft.quantity >= 100}
               aria-label={p("more")}
               onClick={() =>
-                setDraft((d) => ({
+                changeDraft((d) => ({
                   ...d,
                   quantity: Math.min(100, d.quantity + 1),
                 }))
@@ -223,72 +539,68 @@ export function Purchase({
           </div>
         </>
       ) : (
-        <div className="chosen-tickets">
+        <div className="chosen-tickets compact-choices">
+          <div className="bulk-ticket-tools">
+            <button
+              className="button button-outline"
+              disabled={draft.rows.length >= 100}
+              onClick={() =>
+                changeDraft((d) => ({
+                  ...d,
+                  rows: [...d.rows, randomRow()],
+                  quantity: d.rows.length + 1,
+                }))
+              }
+            >
+              <Plus size={17} />
+              {p("add")}
+            </button>
+            <button
+              className="text-button"
+              onClick={() =>
+                changeDraft((d) => ({ ...d, rows: d.rows.map(randomRow) }))
+              }
+            >
+              <Shuffle size={17} />
+              {p("shuffleAll")}
+            </button>
+          </div>
           {draft.rows.map((row, i) => (
-            <article className="chosen-ticket" key={i}>
-              <div className="section-top">
-                <span>{p("number", { number: i + 1 })}</span>
-                <div>
+            <article className="compact-ticket-row" key={i}>
+              <span
+                className="ticket-row-index"
+                aria-label={p("number", { number: i + 1 })}
+              >
+                {i + 1}
+              </span>
+              <div className="editable-balls">
+                {[...row.numbers, row.bonus].map((number, slot) => (
                   <button
-                    className="icon-button"
-                    aria-label={`${p("shuffle")} ${i + 1}`}
-                    onClick={() =>
-                      setDraft((d) => ({
-                        ...d,
-                        rows: d.rows.map((r, j) =>
-                          j === i ? quickPick(draw.ballMax, draw.bonusMax) : r,
-                        ),
-                      }))
-                    }
+                    key={slot}
+                    className={`editable-ball ${slot === 5 ? "bonus" : ""}`}
+                    aria-label={`${p("number", { number: i + 1 })} · ${slot === 5 ? p("bonus") : p("numbersLabel")} ${number}`}
+                    onClick={() => setEditing({ row: i, slot })}
                   >
-                    <Shuffle size={18} />
+                    {number}
                   </button>
-                  <button
-                    className="icon-button"
-                    disabled={draft.rows.length === 1}
-                    aria-label={`${p("remove")} ${i + 1}`}
-                    onClick={() =>
-                      setDraft((d) => ({
-                        ...d,
-                        rows: d.rows.filter((_, j) => j !== i),
-                      }))
-                    }
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
+                ))}
               </div>
               <button
-                className="number-edit-button"
-                aria-label={`${p("pickNumbers")} · ${i + 1}`}
-                onClick={() => setEditing(i)}
+                className="compact-remove"
+                disabled={draft.rows.length <= 1}
+                aria-label={`${p("remove")} ${i + 1}`}
+                onClick={() =>
+                  changeDraft((d) => ({
+                    ...d,
+                    rows: d.rows.filter((_, n) => n !== i),
+                    quantity: d.rows.length - 1,
+                  }))
+                }
               >
-                <NumberBalls
-                  numbers={Array.from(
-                    { length: 5 },
-                    (_, n) => row.numbers[n] ?? 0,
-                  )}
-                  bonus={row.bonus}
-                />
-                <Pencil size={17} />
+                <Trash2 size={16} />
               </button>
             </article>
           ))}
-          <button
-            className="button button-outline full-width"
-            disabled={draft.rows.length >= 100}
-            onClick={() => {
-              const index = draft.rows.length;
-              setDraft((d) => ({
-                ...d,
-                rows: [...d.rows, { numbers: [], bonus: 1 }],
-              }));
-              setEditing(index);
-            }}
-          >
-            <Plus size={18} />
-            {p("add")}
-          </button>
         </div>
       )}
       <div className="purchase-total">
@@ -297,7 +609,7 @@ export function Purchase({
       </div>
       <button
         className="button button-primary purchase-cta"
-        disabled={!ready || !valid || !open}
+        disabled={!ready || !valid || !open || invalidInvitation}
         onClick={checkout}
       >
         {p("buyTickets")} $
@@ -313,7 +625,6 @@ export function Purchase({
           {p("drawClosed")}
         </p>
       )}
-      <p className="selection-note">{p("selectionOnly")}</p>
       <section className="learn-section">
         <h2>{p("learnMore")}</h2>
         <button className="learn-card" onClick={() => setHelp(true)}>
@@ -328,50 +639,36 @@ export function Purchase({
           closeLabel={p("close")}
           onClose={() => setEditing(null)}
         >
-          <p>{p("pickHelp", { max: draw.ballMax, bonus: draw.bonusMax })}</p>
-          <div className="picker-tools">
-            <button
-              className="text-button"
-              onClick={() => {
-                const r = quickPick(draw.ballMax, draw.bonusMax);
-                updateRow(r.numbers, r.bonus);
-              }}
-            >
-              <Shuffle size={18} />
-              {p("shuffle")}
-            </button>
-            <button className="text-button" onClick={() => updateRow([], 1)}>
-              {p("clear")}
-            </button>
-          </div>
-          <div className="number-picker">
-            {Array.from({ length: draw.ballMax }, (_, i) => i + 1).map((n) => (
+          <div
+            className={`number-picker ${editing?.slot === 5 ? "bonus-picker" : ""}`}
+          >
+            {Array.from(
+              { length: editing?.slot === 5 ? draw.bonusMax : draw.ballMax },
+              (_, i) => i + 1,
+            ).map((n) => (
               <button
                 key={n}
-                aria-pressed={active.numbers.includes(n)}
+                aria-pressed={
+                  editing?.slot === 5
+                    ? active.bonus === n
+                    : active.numbers[editing!.slot] === n
+                }
                 disabled={
-                  active.numbers.length === 5 && !active.numbers.includes(n)
+                  editing?.slot !== 5 &&
+                  active.numbers.includes(n) &&
+                  active.numbers[editing!.slot] !== n
                 }
-                onClick={() =>
-                  updateRow(
-                    active.numbers.includes(n)
-                      ? active.numbers.filter((x) => x !== n)
-                      : [...active.numbers, n].sort((a, b) => a - b),
-                    active.bonus,
-                  )
-                }
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          <h3>{p("bonus")}</h3>
-          <div className="number-picker bonus-picker">
-            {Array.from({ length: draw.bonusMax }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                aria-pressed={active.bonus === n}
-                onClick={() => updateRow(active.numbers, n)}
+                onClick={() => {
+                  if (editing?.slot === 5) updateRow(active.numbers, n);
+                  else
+                    updateRow(
+                      active.numbers
+                        .map((old, slot) => (slot === editing!.slot ? n : old))
+                        .sort((a, b) => a - b),
+                      active.bonus,
+                    );
+                  setEditing(null);
+                }}
               >
                 {n}
               </button>
@@ -389,21 +686,22 @@ export function Purchase({
       )}
       {route.checkout && (
         <Modal
-          title={p("checkout")}
+          title={done ? p("confirmed") : p("checkout")}
           closeLabel={p("close")}
           onClose={() => navigate({ ...route, checkout: undefined })}
         >
           <div className="checkout-ticket">
             <PaperTicket
-              numbers={choose ? draft.rows[0].numbers : []}
-              bonus={choose ? draft.rows[0].bonus : null}
+              numbers={orderTickets[0]?.numbers ?? []}
+              bonus={orderTickets[0]?.bonus ?? null}
               locale={locale}
+              count={orderCount}
             />
           </div>
-          {choose && (
+          {orderTickets.length > 0 && (
             <details className="checkout-selections">
-              <summary>{p("reviewTickets", { count })}</summary>
-              {draft.rows.map((row, index) => (
+              <summary>{p("reviewTickets", { count: orderCount })}</summary>
+              {orderTickets.map((row, index) => (
                 <div key={index}>
                   <span>{p("number", { number: index + 1 })}</span>
                   <NumberBalls numbers={row.numbers} bonus={row.bonus} small />
@@ -413,38 +711,206 @@ export function Purchase({
           )}
           <dl className="checkout-summary">
             <dt>{p("tickets")}</dt>
-            <dd>{count.toLocaleString(locale)}</dd>
-            <dt>{p("drawTime")}</dt>
-            <dd>
-              <DrawTime timestamp={draw.closesAt} locale={locale} />
-            </dd>
-            <dt>{p("payment")}</dt>
-            <dd>USDC · Base</dd>
-            {route.ref && (
+            <dd>{orderCount.toLocaleString(locale)}</dd>
+            {!done && (
               <>
-                <dt>{p("referralAddress")}</dt>
+                <dt>{p("drawTime")}</dt>
                 <dd>
-                  <code>
-                    {route.ref.slice(0, 8)}…{route.ref.slice(-6)}
-                  </code>
+                  <UpcomingDrawTime timestamp={draw.closesAt} locale={locale} />
                 </dd>
               </>
             )}
+            <dt>{p("payment")}</dt>
+            <dd>USDC · Base</dd>
             <dt>{p("total")}</dt>
-            <dd>
-              $
-              {money(
-                (BigInt(draw.ticketPrice) * BigInt(count)).toString(),
-                locale,
-                2,
-              )}
-            </dd>
+            <dd>{totalText}</dd>
           </dl>
-          {!wallet.account && <WalletButton locale={locale} />}
-          <p className="inline-notice">{p("purchaseBoundary")}</p>
-          <button className="button button-primary full-width" disabled>
-            {p("purchasePending")}
-          </button>
+          <div className="checkout-actions">
+            {stage === "connect" && (
+              <>
+                {error && (
+                  <p role="alert" className="form-error">
+                    {error}
+                  </p>
+                )}
+                {!wallet.account ? (
+                  <button
+                    className="button button-primary full-width"
+                    onClick={connectFromCheckout}
+                  >
+                    {c("connect")}
+                  </button>
+                ) : (
+                  <button
+                    className="button button-primary full-width"
+                    disabled={busy}
+                    onClick={() => {
+                      setBusy(true);
+                      setError("");
+                      switchBase(urls)
+                        .catch((e) => setError(errorCopy(locale, e)))
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    {c("switchBase")}
+                  </button>
+                )}
+              </>
+            )}
+            {stage === "done" && (
+              <>
+                <p role="status" className="checkout-confirmed">
+                  <Check size={20} />
+                  {p("confirmationDetail")}
+                </p>
+                {entry?.hash && (
+                  <a
+                    className="text-button"
+                    href={`${EXPLORER}/tx/${entry.hash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {p("viewTransaction")}
+                    <ExternalLink size={16} />
+                  </a>
+                )}
+                <RouteLink
+                  to={{
+                    view: "tickets",
+                    draw: entry?.purchaseReceipt?.draw ?? draw.id,
+                  }}
+                  navigate={navigate}
+                  className="button button-primary full-width"
+                >
+                  {p("viewTickets")}
+                  <ArrowRight size={19} />
+                </RouteLink>
+              </>
+            )}
+            {stage === "sent" && entry && (
+              <>
+                <p role="status" className="inline-notice" aria-busy="true">
+                  {entry.status === "wallet"
+                    ? c("wallet")
+                    : entry.status === "unknown"
+                      ? c("ambiguousTransaction")
+                      : entry.kind === "approve"
+                        ? p("approvalPending")
+                        : p("purchaseSubmitted")}
+                </p>
+                {entry.status === "unknown" && (
+                  <RouteLink
+                    to={{ view: "winnings", section: "activity" }}
+                    navigate={navigate}
+                    className="text-button"
+                  >
+                    {c("activity")}
+                    <ArrowRight size={17} />
+                  </RouteLink>
+                )}
+                {entry.hash && (
+                  <a
+                    className="text-button"
+                    href={`${EXPLORER}/tx/${entry.hash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {p("viewTransaction")}
+                    <ExternalLink size={16} />
+                  </a>
+                )}
+              </>
+            )}
+            {stage === "failed" && entry && (
+              <>
+                <p role="alert" className="form-error">
+                  {entry.kind === "purchase" && entry.status === "reverted"
+                    ? p("purchaseReverted")
+                    : c(entry.status)}
+                </p>
+                <button
+                  className="button button-primary full-width"
+                  onClick={retry}
+                >
+                  {p("tryAgain")}
+                </button>
+              </>
+            )}
+            {stage === "approve" && (
+              <p className="inline-notice">
+                {p("approveHelp", { amount: money(orderTotal, locale, 2) })}
+              </p>
+            )}
+            {(stage === "review" ||
+              stage === "approve" ||
+              stage === "confirm") && (
+              <>
+                {error && (
+                  <p role="alert" className="form-error">
+                    {error}
+                  </p>
+                )}
+                {reviewValid && review!.position.contractWallet && (
+                  <p className="inline-notice">{c("contractWallet")}</p>
+                )}
+                {stage === "review" ? (
+                  <button
+                    className="button button-primary full-width"
+                    disabled={busy || !order}
+                    onClick={() => void prepare()}
+                  >
+                    {busy && <LoaderCircle size={18} className="spinning" />}
+                    {busy
+                      ? p("reviewing")
+                      : error
+                        ? p("tryAgain")
+                        : p("reviewPurchase")}
+                  </button>
+                ) : (
+                  <button
+                    className="button button-primary full-width"
+                    disabled={busy || review!.position.contractWallet}
+                    onClick={() => void send()}
+                  >
+                    {busy
+                      ? c("working")
+                      : stage === "approve"
+                        ? p("approveAmount", {
+                            amount: money(orderTotal, locale, 2),
+                          })
+                        : `${p("confirmPurchase")} · ${totalText}`}
+                    <ArrowRight size={19} />
+                  </button>
+                )}
+                {call && (
+                  <details className="call-inspector">
+                    <summary>{c("rawTransaction")}</summary>
+                    <dl className="review-facts">
+                      <dt>{c("destination")}</dt>
+                      <dd>
+                        <a
+                          href={`${EXPLORER}/address/${call.to}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <code>{call.to}</code>
+                        </a>
+                      </dd>
+                      <dt>Base · 8453</dt>
+                      <dd>#{review!.block.toString()}</dd>
+                      <dt>{c("connected")}</dt>
+                      <dd>
+                        <code>{review!.account}</code>
+                      </dd>
+                    </dl>
+                    <p>{c("exactCall")}:</p>
+                    <code>{call.data}</code>
+                    <p>value: 0 ETH · {review!.calls.length} transaction(s)</p>
+                  </details>
+                )}
+              </>
+            )}
+          </div>
         </Modal>
       )}
       {help && (

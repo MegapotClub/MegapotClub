@@ -1,21 +1,17 @@
+import { ReviewCard } from "./ReviewCard.tsx";
 import { WalletConnection, TransactionActivity } from "./WalletPanel.tsx";
 export { WalletConnection } from "./WalletPanel.tsx";
 import { VaultWorkspace } from "./VaultWorkspace.tsx";
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
   ArrowUpRight,
   ChevronRight,
   RefreshCw,
-  ShieldCheck,
-  Wallet,
 } from "lucide-react";
 import { formatEther } from "viem";
 import type { Locale } from "./i18n.ts";
 import { clubCopy, errorCopy } from "./clubCopy.ts";
-import { experienceCopy } from "./experienceCopy.ts";
-import { retailCopy } from "./retailCopy.ts";
 import { money } from "./model.ts";
 import { EXPLORER } from "./config.ts";
 import { parseActionDraft } from "./actionDraft.ts";
@@ -26,188 +22,24 @@ import {
   amountUSDC,
   readPosition,
   reviewAction,
-  ticketIds,
   type Action,
   type Position,
   type Review,
 } from "./native.ts";
 import { useWallet } from "./wallet.ts";
-import { downloadJSON, submitReview, useTransactions } from "./transactions.ts";
+import { downloadJSON, useTransactions } from "./transactions.ts";
 import { normalNavigation, routeHref, type Route } from "./navigation.ts";
-
-export function ReviewCard({
-  review: initialReview,
-  locale,
-  urls,
-  onClose,
-  onSent,
-}: {
-  review: Review;
-  locale: Locale;
-  urls: string[];
-  onClose: () => void;
-  onSent: () => void;
-}) {
-  const c = clubCopy(locale),
-    wallet = useWallet(),
-    revision = useRef(wallet.revision),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const submission = useRef<AbortController | null>(null);
-  useEffect(() => () => submission.current?.abort(), []);
-  const claiming = initialReview.action.kind === "claim";
-  const queryClient = useQueryClient();
-  const queryKey = [
-    "claim-review",
-    initialReview.account.toLowerCase(),
-    initialReview.createdAt,
-    urls,
-  ];
-  const refreshed = useQuery({
-    queryKey,
-    queryFn: () =>
-      reviewAction(urls, initialReview.account, initialReview.action),
-    initialData: initialReview,
-    initialDataUpdatedAt: initialReview.createdAt,
-    enabled: claiming && !busy && wallet.revision === revision.current,
-    staleTime: 30_000,
-    gcTime: 60_000,
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-  const review = claiming ? refreshed.data : initialReview;
-  const call = review.calls[0];
-  const matches =
-    wallet.account?.toLowerCase() === review.account.toLowerCase() &&
-    wallet.chainId === 8453 &&
-    !review.position.contractWallet &&
-    wallet.revision === revision.current;
-  return (
-    <section
-      className="review-card"
-      aria-labelledby="review-title"
-      tabIndex={-1}
-      ref={(el) => {
-        if (el && !el.dataset.focused) {
-          el.dataset.focused = "true";
-          el.focus();
-          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }
-      }}
-    >
-      <div className="section-top">
-        <div className="eyebrow">
-          <ShieldCheck size={18} />
-          {c("review")}
-        </div>
-        <button className="text-button" onClick={onClose} disabled={busy}>
-          {c("close")}
-        </button>
-      </div>
-      <h2 id="review-title">{c(call.kind)}</h2>
-      <p className="review-amount">
-        {claiming ? "$" : ""}
-        {money(
-          review.amount.toString(),
-          locale,
-          claiming && review.amount >= 10_000n ? 2 : 6,
-        )}{" "}
-        <small>USDC</small>
-      </p>
-      {call.kind === "approve" && (
-        <p className="inline-notice">{c("approvalHelp")}</p>
-      )}
-      {review.action.kind === "deposit" && <p>{c("depositHelp")}</p>}
-      {review.action.kind === "withdraw" && <p>{c("exitHelp")}</p>}
-      {claiming && refreshed.isError && (
-        <p className="inline-notice" role="status">
-          {c("claimRefreshDelayed")}
-        </p>
-      )}
-      <details className="call-inspector">
-        <summary>{c("rawTransaction")}</summary>
-        <p className="fine-print">{c("receive")}</p>
-        <dl className="review-facts">
-          <dt>{c("destination")}</dt>
-          <dd>
-            <a
-              href={`${EXPLORER}/address/${call.to}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <code>{call.to}</code>
-            </a>
-          </dd>
-          <dt>Base · 8453</dt>
-          <dd>#{review.block.toString()}</dd>
-          <dt>{c("connected")}</dt>
-          <dd>
-            <code>{review.account}</code>
-          </dd>
-        </dl>
-        <p className="fine-print">{c("noFee")}</p>
-        <p>{c("exactCall")}:</p>
-        <code>{call.data}</code>
-        <p>value: 0 ETH · {review.calls.length} transaction(s)</p>
-      </details>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="review-buttons">
-        <button
-          className="button button-primary"
-          disabled={!matches || busy}
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            const controller = new AbortController();
-            submission.current = controller;
-            try {
-              await submitReview(
-                urls,
-                review,
-                revision.current,
-                controller.signal,
-                (fresh) => queryClient.setQueryData(queryKey, fresh),
-              );
-              if (!controller.signal.aborted) onSent();
-            } catch (e) {
-              if (!controller.signal.aborted) setError(errorCopy(locale, e));
-            } finally {
-              if (!controller.signal.aborted) setBusy(false);
-              if (submission.current === controller) submission.current = null;
-            }
-          }}
-        >
-          {busy ? c("working") : c("sign")}
-          <ChevronRight size={18} />
-        </button>
-      </div>
-      {!matches && (
-        <p className="fine-print">
-          {c(
-            review.position.contractWallet ? "contractWallet" : "walletChanged",
-          )}
-        </p>
-      )}
-    </section>
-  );
-}
 
 export function NativeWorkspace({
   locale,
   urls,
-  mode = "account",
+  mode = "lp",
   route,
   navigate,
 }: {
   locale: Locale;
   urls: string[];
-  mode?: "account" | "lp";
+  mode?: "lp";
   route?: Route;
   navigate?: (route: Route) => void;
 }) {
@@ -218,7 +50,6 @@ export function NativeWorkspace({
     [error, setError] = useState(""),
     [amount, setAmount] = useState(""),
     [percentage, setPercentage] = useState(100),
-    [ids, setIds] = useState(""),
     [review, setReview] = useState<Review | null>(null),
     [reviewing, setReviewing] = useState(false),
     [watch, setWatch] = useState(route?.address ?? "");
@@ -234,7 +65,6 @@ export function NativeWorkspace({
       );
       if (draft) {
         setAmount(draft.amount);
-        setIds(draft.ids);
         setPercentage(draft.percentage);
       }
     } catch {
@@ -247,37 +77,26 @@ export function NativeWorkspace({
     try {
       localStorage.setItem(
         "megapot-club:action-draft:v1",
-        JSON.stringify({ amount, ids, percentage }),
+        JSON.stringify({ amount, percentage }),
       );
     } catch {
       setDraftStorageError(true);
     }
-  }, [amount, ids, percentage, draftReady]);
+  }, [amount, percentage, draftReady]);
   const prepareRun = useRef(0);
-  const r = retailCopy(locale);
-  const x = experienceCopy(locale);
-  const claimIds = route?.ticket ?? ids;
-  const [claimOpen, setClaimOpen] = useState(false);
-  const [balanceStale, setBalanceStale] = useState(false);
-  const [balanceNow, setBalanceNow] = useState(Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setBalanceNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
   const run = useRef(0),
     entries = useTransactions();
-  const account = mode === "lp" ? (route?.address ?? w.account) : w.account;
+  const account = route?.address ?? w.account;
   const position =
     lastPosition?.account.toLowerCase() === account?.toLowerCase()
       ? lastPosition
       : null;
   const tab = route?.tab ?? "position";
-  const section = route?.section ?? "prizes";
   useEffect(() => {
     setReview(null);
     setReviewing(false);
     prepareRun.current++;
-  }, [tab, section, route?.ticket, ids]);
+  }, [tab]);
   const value = (n: bigint) => `${money(n.toString(), locale, 2)} USDC`;
   const refresh = async () => {
     const id = ++run.current;
@@ -291,11 +110,9 @@ export function NativeWorkspace({
       const p = await readPosition(urls, account);
       if (run.current === id) {
         setPosition(p);
-        setBalanceStale(false);
       }
     } catch (e) {
       if (run.current === id) {
-        setBalanceStale(true);
         setError(errorCopy(locale, e));
       }
     } finally {
@@ -305,11 +122,15 @@ export function NativeWorkspace({
   useEffect(() => {
     setReview(null);
     setPosition(null);
-    setBalanceStale(false);
+
     setReviewing(false);
     prepareRun.current++;
     void refresh();
+    const timer = setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 60_000);
     return () => {
+      clearInterval(timer);
       run.current++;
       prepareRun.current++;
     };
@@ -367,10 +188,7 @@ export function NativeWorkspace({
       }
     };
   return (
-    <div
-      className={`native-workspace ${mode === "lp" ? "lp-workspace" : ""}`}
-      data-section={mode === "account" ? section : undefined}
-    >
+    <div className={`native-workspace ${mode === "lp" ? "lp-workspace" : ""}`}>
       {draftStorageError && (
         <p role="status" className="form-error">
           {c("storageFailed")}
@@ -406,98 +224,11 @@ export function NativeWorkspace({
           </nav>
         </>
       )}
-      {mode === "account" && (
-        <nav
-          className="workspace-tabs winnings-tabs"
-          aria-label={r("winnings")}
-        >
-          {(["prizes", "refunds", "activity"] as const).map((s) => {
-            const next: Route = { view: "winnings", section: s };
-            return (
-              <a
-                key={s}
-                href={routeHref(next)}
-                aria-current={section === s ? "page" : undefined}
-                onClick={navigateTab(next)}
-              >
-                {s === "prizes"
-                  ? r("prizes")
-                  : s === "refunds"
-                    ? r("recovery")
-                    : c("activity")}
-              </a>
-            );
-          })}
-        </nav>
-      )}
-      {((mode === "account" && section !== "activity") ||
-        (mode === "lp" && (tab === "position" || tab === "recovery"))) && (
+      {(tab === "position" || tab === "recovery") && (
         <section className="action-card wallet-card">
           <div className="section-top">
-            <h2>{mode === "lp" ? c("account") : x("inWallet")}</h2>
-            {account && (
-              <button
-                className="icon-button"
-                disabled={loading}
-                aria-label={c("refresh")}
-                onClick={() => void refresh()}
-              >
-                <RefreshCw size={18} className={loading ? "spinning" : ""} />
-              </button>
-            )}
+            <h2>{c("account")}</h2>
           </div>
-          {mode === "account" && (
-            <div className="balance-spotlight">
-              {account ? (
-                <>
-                  <strong>
-                    {position
-                      ? money(position.balance.toString(), locale, 6)
-                          .replace(/([.,]\d*?)0+$/, "$1")
-                          .replace(/[.,]$/, "")
-                      : "—"}
-                  </strong>
-                  <span>
-                    <span className="usdc-mark" aria-hidden="true">
-                      $
-                    </span>
-                    {x("onBase")}
-                  </span>
-                  {position && (
-                    <small>
-                      {c("gas")}: {formatEther(position.ether)} ETH
-                    </small>
-                  )}
-                  {position && (
-                    <small className={balanceStale ? "balance-stale" : ""}>
-                      {balanceStale
-                        ? x("localStale")
-                        : balanceNow / 1000 - Number(position.timestamp) > 120
-                          ? x("lastKnown")
-                          : `Base · #${position.block.toString()}`}{" "}
-                      ·{" "}
-                      {new Date(
-                        Number(position.timestamp) * 1000,
-                      ).toLocaleString(locale, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                        timeZoneName: "short",
-                      })}
-                    </small>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span className="balance-orb" aria-hidden="true">
-                    <Wallet size={32} />
-                  </span>
-                  <h3>{x("balanceConnect")}</h3>
-                </>
-              )}
-            </div>
-          )}
           <WalletConnection locale={locale} urls={urls} />
           {position && mode === "lp" && (
             <div className="wallet-balances">
@@ -712,101 +443,16 @@ export function NativeWorkspace({
           </section>
         </>
       )}
-      {mode === "account" && section === "prizes" && (
-        <section className="action-card earnings-card">
-          <h2>{x("earnings")}</h2>
-          <p>{x("earningsHelp")}</p>
-          <a
-            className="text-button ticket-id-link"
-            href="#tickets?period=past"
-            onClick={navigateTab({ view: "tickets", period: "past" })}
-          >
-            {x("findPrizes")}
-            <ArrowUpRight size={16} />
-          </a>
-          <details
-            className="claim-disclosure"
-            open={Boolean(route?.ticket) || claimOpen}
-            onToggle={(event) => setClaimOpen(event.currentTarget.open)}
-          >
-            <summary>
-              {route?.ticket ? x("lookupReady") : r("claimById")}
-            </summary>
-            <p>{x("verifiedReview")}</p>
-            <label htmlFor="claim-ids">{c("ticketIds")}</label>
-            <input
-              id="claim-ids"
-              value={claimIds}
-              onChange={(e) => {
-                setClaimOpen(true);
-                setIds(e.target.value);
-                setReview(null);
-                prepareRun.current++;
-                setReviewing(false);
-                if (route?.ticket) navigate?.({ ...route, ticket: undefined });
-              }}
-              placeholder="123, 456"
-              maxLength={2400}
-            />
-            <div className="wallet-buttons">
-              <button
-                className="button button-primary"
-                disabled={!account || reviewing || !claimIds.trim()}
-                onClick={() => {
-                  try {
-                    void prepare({ kind: "claim", ids: ticketIds(claimIds) });
-                  } catch (e) {
-                    setError(errorCopy(locale, e));
-                  }
-                }}
-              >
-                {c("review")}
-              </button>
-              {position?.emergency && (
-                <button
-                  className="button button-outline"
-                  disabled={reviewing || !claimIds.trim()}
-                  onClick={() => {
-                    try {
-                      void prepare({
-                        kind: "refund",
-                        ids: ticketIds(claimIds),
-                      });
-                    } catch (e) {
-                      setError(errorCopy(locale, e));
-                    }
-                  }}
-                >
-                  {c("refund")}
-                </button>
-              )}
-            </div>
-          </details>
-          {position && (
-            <div className="referral-summary">
-              <h3>{x("referralEarnings")}</h3>
-              {position.referral > 0n ? (
-                actionButton("referral", position.referral)
-              ) : (
-                <p>{x("noReferrals")}</p>
-              )}
-            </div>
-          )}
+      {tab === "recovery" && position && (
+        <section className="action-card">
+          <h2>{c("recovery")}</h2>
+          <p>{c("recoveryHelp")}</p>
+          {actionButton("cancelSubscription", position.subscription)}
+          {actionButton("cancelBatch", position.batch)}
+          {actionButton("revoke", position.allowance)}
         </section>
       )}
-      {((mode === "account" && section === "refunds") ||
-        (mode === "lp" && tab === "recovery")) &&
-        position && (
-          <section className="action-card">
-            <h2>{c("recovery")}</h2>
-            <p>{c("recoveryHelp")}</p>
-            {actionButton("cancelSubscription", position.subscription)}
-            {actionButton("cancelBatch", position.batch)}
-            {actionButton("revoke", position.allowance)}
-          </section>
-        )}
-      {((mode === "account" && section === "activity") ||
-        (mode === "lp" && tab === "activity")) && (
+      {tab === "activity" && (
         <TransactionActivity
           locale={locale}
           urls={urls}
@@ -826,8 +472,6 @@ export function NativeWorkspace({
               <dd>{position.shares.toString()}</dd>
               <dt>{c("allowance")}</dt>
               <dd>{value(position.allowance)}</dd>
-              <dt>Base</dt>
-              <dd>#{position.block.toString()}</dd>
             </dl>
           )}
           <div className="registry-list">

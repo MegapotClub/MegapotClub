@@ -58,13 +58,20 @@
         rankedTickets: true,
         usdcBalance:
           balanceMode === "zero" ? 0n : balanceMode === "tiny" ? 1n : undefined,
+        // ?allowance=full simulates an already approved Jackpot spender so the
+        // purchase confirmation stage renders; the wallet still rejects sends.
+        usdcAllowance:
+          new URLSearchParams(location.search).get("allowance") === "full"
+            ? 100_000_000n
+            : 0n,
       });
       const seenBalances = [], claimStates = [];
       const drawModes = [],
         auditStart = performance.now();
       new MutationObserver(() => {
         const claimState = document.querySelector('.claim-loading')?.textContent?.trim() ||
-          document.querySelector('.review-card')?.textContent?.trim() || '';
+          document.querySelector('.review-card')?.textContent?.trim() ||
+          document.querySelector('.checkout-actions')?.textContent?.trim() || '';
         if (claimState && claimStates.at(-1) !== claimState) {
           claimStates.push(claimState);
           document.getElementById('claim-audit').textContent = JSON.stringify(claimStates);
@@ -185,7 +192,7 @@
       };
       render();
       const provider = {
-        async request({ method }) {
+        async request({ method, params }) {
           if (
             method === "eth_accounts" &&
             sessionStorage.getItem("club-qa:stall")
@@ -202,8 +209,11 @@
               ? ["0x1111111111111111111111111111111111111111"]
               : [];
           if (method === "eth_chainId") return "0x2105";
-          if (method === "eth_sendTransaction") throw Object.assign(
-            new Error("Test wallet rejected the request; no broadcast"), { code: 4001 });
+          if (method === "eth_sendTransaction") {
+            const outcome = new URLSearchParams(location.search).get("walletOutcome") || "rejected";
+            if (!["confirmed", "reverted", "ambiguous", "rejected"].includes(outcome)) throw new Error("Invalid synthetic outcome");
+            return rpc.simulateSend(params[0], outcome);
+          }
           throw Object.assign(new Error("Fixture never signs or sends"), {
             code: -32601,
           });

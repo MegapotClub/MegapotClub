@@ -9,6 +9,7 @@ import { playCopy } from "./playCopy.ts";
 import { money } from "./model.ts";
 import { DrawTime } from "./drawTime.tsx";
 
+import { WinShare } from "./WinShare.tsx";
 import { groupClaimedWins } from "./claimedWins.ts";
 
 export function ClaimedEarnings({
@@ -72,12 +73,14 @@ export function ClaimedEarnings({
           <Check size={20} aria-hidden="true" />
           <div className="earning-summary-label">
             <strong>
-              {p("paid")} ·{" "}
-              {group.wins.length === 1
-                ? ticketCopy(locale)("oneTicket")
-                : p("ticketTotal", {
-                    count: group.wins.length.toLocaleString(locale),
-                  })}
+              {p("winner")} ·{" "}
+              {group.freeTickets === group.wins.length
+                ? p("freeTicketCount", { count: group.freeTickets })
+                : group.wins.length === 1
+                  ? ticketCopy(locale)("oneTicket")
+                  : p("ticketTotal", {
+                      count: group.wins.length.toLocaleString(locale),
+                    })}
             </strong>
             {dates.data?.dates[group.draw] && (
               <DrawTime
@@ -86,7 +89,9 @@ export function ClaimedEarnings({
               />
             )}
           </div>
-          <strong>${money(group.total.toString(), locale, 2)} USDC</strong>
+          {group.freeTickets !== group.wins.length && (
+            <strong>${money(group.total.toString(), locale, 2)} USDC</strong>
+          )}
           <details className="earning-group-details">
             <summary>{p("showDetails")}</summary>
             {group.wins.map((win) => (
@@ -98,6 +103,14 @@ export function ClaimedEarnings({
               />
             ))}
           </details>
+          <WinShare
+            win={{
+              amount: group.total.toString(),
+              account,
+              date: dates.data?.dates[group.draw],
+            }}
+            locale={locale}
+          />
           <div className="earning-receipts">
             {[
               ...new Set(

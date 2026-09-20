@@ -1,3 +1,4 @@
+import { BaseError, ContractFunctionRevertedError } from "viem";
 import type { Locale } from "./i18n.ts";
 // Every shipped locale has complete coverage. No remote translations or runtime fallback service.
 const locales: Locale[] = [
@@ -11,6 +12,46 @@ const locales: Locale[] = [
   "ko",
 ];
 const words = {
+  invalidSelection: [
+    "Check your ticket numbers and try again.",
+    "Revisa los números de tus boletos e inténtalo de nuevo.",
+    "Confira os números dos bilhetes e tente novamente.",
+    "Vérifiez les numéros de vos billets et réessayez.",
+    "Prüfe deine Losnummern und versuche es erneut.",
+    "请检查彩票号码后重试。",
+    "チケットの番号を確認して再試行してください。",
+    "티켓 번호를 확인한 뒤 다시 시도하세요.",
+  ],
+  actionUpdated: [
+    "Checkout updated. Continue with the action shown.",
+    "El pago se actualizó. Continúa con la acción indicada.",
+    "A compra foi atualizada. Continue com a ação exibida.",
+    "Le paiement a été actualisé. Continuez avec l’action affichée.",
+    "Checkout aktualisiert. Mit der angezeigten Aktion fortfahren.",
+    "结账已更新。请继续当前显示的操作。",
+    "購入内容を更新しました。表示された操作で続けてください。",
+    "결제가 업데이트되었습니다. 표시된 작업으로 계속하세요.",
+  ],
+  trackingUnavailable: [
+    "Could not prepare a safely tracked transaction. Reopen Club and try again.",
+    "No se pudo preparar la transacción. Vuelve a abrir Club e inténtalo de nuevo.",
+    "Não foi possível preparar a transação. Reabra o Club e tente novamente.",
+    "Impossible de préparer la transaction. Rouvrez Club et réessayez.",
+    "Transaktion konnte nicht vorbereitet werden. Club erneut öffnen und versuchen.",
+    "无法准备可安全跟踪的交易。请重新打开 Club 后再试。",
+    "取引を安全に準備できませんでした。Clubを開き直して再試行してください。",
+    "거래를 안전하게 준비할 수 없습니다. Club을 다시 열고 시도하세요.",
+  ],
+  invalidInvitation: [
+    "This invitation is invalid.",
+    "Esta invitación no es válida.",
+    "Este convite é inválido.",
+    "Cette invitation est invalide.",
+    "Diese Einladung ist ungültig.",
+    "此邀请无效。",
+    "この招待は無効です。",
+    "이 초대는 유효하지 않습니다.",
+  ],
   walletTimeout: [
     "Connection timed out. Check your wallet, then try again.",
     "La conexión caducó. Revisa tu cartera y vuelve a intentarlo.",
@@ -340,6 +381,26 @@ const words = {
     "撤销 USDC 授权",
     "USDC承認を取り消す",
     "USDC 승인 철회",
+  ],
+  purchase: [
+    "Buy tickets",
+    "Comprar boletos",
+    "Comprar bilhetes",
+    "Acheter des billets",
+    "Lose kaufen",
+    "购买彩票",
+    "チケットを購入",
+    "티켓 구매",
+  ],
+  priceChanged: [
+    "The ticket price changed. Review your purchase again.",
+    "El precio del boleto cambió. Revisa tu compra de nuevo.",
+    "O preço do bilhete mudou. Revise sua compra novamente.",
+    "Le prix du billet a changé. Vérifiez à nouveau votre achat.",
+    "Der Lospreis hat sich geändert. Prüfe deinen Kauf erneut.",
+    "彩票价格已变化。请重新核对购买。",
+    "チケット価格が変わりました。購入内容を再確認してください。",
+    "티켓 가격이 변경되었습니다. 구매 내용을 다시 확인하세요.",
   ],
   approve: [
     "Approve exact USDC amount",
@@ -992,14 +1053,14 @@ const words = {
     "지갑 요청이 이미 열려 있습니다. 지갑을 확인하세요.",
   ],
   storageFailed: [
-    "Browser storage is unavailable. Export your work before closing this page.",
-    "Almacenamiento no disponible. Exporta antes de cerrar.",
-    "Armazenamento indisponível. Exporte antes de fechar.",
-    "Stockage indisponible. Exportez avant de fermer.",
-    "Browserspeicher nicht verfügbar. Vor dem Schließen exportieren.",
-    "浏览器存储不可用。关闭页面前请导出。",
-    "ブラウザー保存が使えません。閉じる前に出力してください。",
-    "브라우저 저장소를 사용할 수 없습니다. 닫기 전에 내보내세요.",
+    "Your progress could not be saved. Keep this page open and check your wallet before continuing.",
+    "No se pudo guardar tu progreso. Mantén esta página abierta y revisa tu cartera antes de continuar.",
+    "Não foi possível salvar seu progresso. Mantenha esta página aberta e confira sua carteira antes de continuar.",
+    "Votre progression n’a pas pu être enregistrée. Gardez cette page ouverte et vérifiez votre portefeuille avant de continuer.",
+    "Dein Fortschritt konnte nicht gespeichert werden. Lass diese Seite geöffnet und prüfe dein Wallet, bevor du fortfährst.",
+    "无法保存进度。请保持此页面打开，并检查钱包后再继续。",
+    "進行状況を保存できませんでした。このページを開いたまま、続行前にウォレットを確認してください。",
+    "진행 상황을 저장하지 못했습니다. 이 페이지를 열어 둔 채 계속하기 전에 지갑을 확인하세요.",
   ],
 } as const;
 export type ClubKey = keyof typeof words;
@@ -1014,6 +1075,28 @@ export function errorCopy(locale: Locale, error: unknown) {
       : typeof error === "string"
         ? error
         : "failed";
+  const revert =
+    error instanceof BaseError
+      ? error.walk((e) => e instanceof ContractFunctionRevertedError)
+      : undefined;
+  if (revert instanceof ContractFunctionRevertedError && revert.data) {
+    const names: Record<string, ClubKey> = {
+      TicketPurchasesDisabled: "drawLocked",
+      JackpotLocked: "drawLocked",
+      NoPrizePool: "drawLocked",
+      EmergencyEnabled: "drawLocked",
+      NotTicketOwner: "notOwner",
+      NoTicketsToClaim: "nothingAvailable",
+      NoReferralFeesToClaim: "nothingAvailable",
+      TicketFromFutureDrawing: "notSettled",
+      InvalidTicketCount: "invalidSelection",
+      InvalidNormalsCount: "invalidSelection",
+      InvalidBonusball: "invalidSelection",
+      InvalidRecipient: "walletChanged",
+      ReferralSplitSumInvalid: "invalidInvitation",
+    };
+    key = names[revert.data.errorName] ?? "failed";
+  }
   if (key === "reviewExpired") key = "reviewChanged";
   if (["wrongChain", "connectFirst"].includes(key)) key = "walletChanged";
   return clubCopy(locale)(key in words ? (key as ClubKey) : "failed");

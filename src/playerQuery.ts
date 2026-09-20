@@ -8,12 +8,12 @@ export const playerQueryOptions = (urls: string[], account?: string | null) =>
     enabled: Boolean(account),
     queryFn: ({ signal }) => fetchPlayerAccount(urls, account!, signal),
     retry: false,
-    staleTime: 60_000,
-    refetchInterval: (query) => (query.state.error ? 300_000 : 60_000),
+    staleTime: 25_000,
+    refetchInterval: (query) => (query.state.error ? 300_000 : 30_000),
     refetchIntervalInBackground: false,
     refetchOnReconnect: true,
     gcTime: typeof window === "undefined" ? Infinity : 300_000,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   });
 export function usePlayerAccount(urls: string[], account?: string | null) {
   return useQuery(playerQueryOptions(urls, account));

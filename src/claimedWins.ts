@@ -1,9 +1,10 @@
+import { isFreeTicketTier } from "./prizeDisplay.ts";
 import type { IndexedWin } from "./megapotApi.ts";
 
 export function groupClaimedWins(wins: IndexedWin[]) {
   const groups = new Map<
     string,
-    { draw: string; total: bigint; wins: IndexedWin[] }
+    { draw: string; total: bigint; freeTickets: number; wins: IndexedWin[] }
   >();
   const seen = new Set<string>();
   for (const win of wins) {
@@ -13,9 +14,16 @@ export function groupClaimedWins(wins: IndexedWin[]) {
     const group = groups.get(win.round_id) ?? {
       draw: win.round_id,
       total: 0n,
+      freeTickets: 0,
       wins: [],
     };
     group.total += BigInt(win.amount.amount);
+    if (
+      win.matched_normals !== undefined &&
+      win.bonusball_match !== undefined &&
+      isFreeTicketTier(win.matched_normals * 2 + Number(win.bonusball_match))
+    )
+      group.freeTickets++;
     group.wins.push(win);
     groups.set(win.round_id, group);
   }

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Gift, LoaderCircle } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ExternalLink,
+  Gift,
+  LoaderCircle,
+} from "lucide-react";
 import { ClaimedEarnings } from "./ClaimedEarnings.tsx";
 import { usePlayerAccount } from "./playerQuery.ts";
 import { useWallet } from "./wallet.ts";
@@ -10,11 +16,15 @@ import { playCopy } from "./playCopy.ts";
 import { money } from "./model.ts";
 import { reviewAction, type Review, type Action } from "./native.ts";
 import { errorCopy } from "./clubCopy.ts";
-import { ReviewCard } from "./NativeWorkspace.tsx";
+import { ReviewCard } from "./ReviewCard.tsx";
 import { TransactionActivity } from "./WalletPanel.tsx";
 import { NumberBalls, RouteLink } from "./RetailPrimitives.tsx";
 import { Modal } from "./Modal.tsx";
 import { DrawTime } from "./drawTime.tsx";
+import { WinShare } from "./WinShare.tsx";
+import { useTransactions } from "./transactions.ts";
+import { isFreeTicketTier } from "./prizeDisplay.ts";
+import { EXPLORER } from "./config.ts";
 import type { PlayerObservation } from "./playerReads.ts";
 type Prize = PlayerObservation["settledTickets"][number];
 function WinReveal({
@@ -114,6 +124,13 @@ export function PlayerBalance({
     [reveal, setReveal] = useState<{ account: string; prizes: Prize[] } | null>(
       null,
     );
+  const [claimId, setClaimId] = useState<string | null>(null);
+  const claimEntry = useTransactions().find(
+    (e) =>
+      e.id === claimId &&
+      e.account.toLowerCase() === wallet.account?.toLowerCase(),
+  );
+  const prepareAbort = useRef<AbortController | null>(null);
   const run = useRef(0),
     seenSession = useRef(new Set<string>());
   const prizes = data?.settledTickets.filter((t) => t.net > 0n) ?? [],
@@ -127,8 +144,11 @@ export function PlayerBalance({
     setError("");
     setSelected([]);
     setReveal(null);
+    setClaimId(null);
+    prepareAbort.current?.abort();
     return () => {
       run.current++;
+      prepareAbort.current?.abort();
     };
   }, [wallet.account, wallet.revision, urls]);
   useEffect(() => {
@@ -160,11 +180,19 @@ export function PlayerBalance({
   const prepareAction = async (action: Action) => {
     if (!wallet.account || busy) return;
     const seq = ++run.current;
+    prepareAbort.current?.abort();
+    const controller = new AbortController();
+    prepareAbort.current = controller;
     setBusy(true);
     setError("");
     setReview(null);
     try {
-      const next = await reviewAction(urls, wallet.account, action);
+      const next = await reviewAction(
+        urls,
+        wallet.account,
+        action,
+        controller.signal,
+      );
       if (run.current === seq) setReview(next);
     } catch (e) {
       if (run.current === seq) setError(errorCopy(locale, e));
@@ -178,6 +206,36 @@ export function PlayerBalance({
       : Promise.resolve();
   return (
     <section className="retail-page player-balance">
+      {claimEntry?.status === "confirmed" && claimEntry.claimReceipt && (
+        <section className="claim-success" role="status">
+          <h2>{p("claimComplete")}</h2>
+          <p>{p("shareRewardHint")}</p>
+          <WinShare
+            win={{
+              amount: claimEntry.claimReceipt.amount,
+              account: claimEntry.account,
+            }}
+            locale={locale}
+          />
+          <a
+            className="text-button"
+            href={`${EXPLORER}/tx/${claimEntry.hash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {p("viewTransaction")}
+            <ExternalLink size={16} />
+          </a>
+          <RouteLink
+            to={{ view: "play" }}
+            navigate={navigate}
+            className="text-button"
+          >
+            {p("playAgain")}
+            <ArrowRight size={16} />
+          </RouteLink>
+        </section>
+      )}
       <h1>{p("balance")}</h1>
       <section className="retail-balance-card">
         {!wallet.account ? (
@@ -240,6 +298,20 @@ export function PlayerBalance({
                   : "—"}
               </strong>
             </div>
+            {prizes.length > 0 && (
+              <>
+                <p className="share-reward-hint">{p("shareRewardHint")}</p>
+                <WinShare
+                  win={{
+                    amount: prizes
+                      .reduce((sum, prize) => sum + prize.net, 0n)
+                      .toString(),
+                    account: wallet.account!,
+                  }}
+                  locale={locale}
+                />
+              </>
+            )}
             {prizes.map((prize) => (
               <article
                 className="unclaimed-row"
@@ -263,7 +335,13 @@ export function PlayerBalance({
                   />
                   <span>
                     <strong>
-                      ${money(prize.net.toString(), locale, 2)} USDC
+                      {isFreeTicketTier(prize.tier) ? (
+                        <span title={p("freeTicketExplanation")}>
+                          {p("freeTicket")}
+                        </span>
+                      ) : (
+                        <>${money(prize.net.toString(), locale, 2)} USDC</>
+                      )}
                     </strong>
                     <small>
                       <DrawTime
@@ -295,11 +373,6 @@ export function PlayerBalance({
             {data && !data.pricingComplete && (
               <p className="inline-notice">
                 {p("partialPrizes", { count: data.unpricedTickets })}
-              </p>
-            )}
-            {data && (
-              <p className="fine-print">
-                {p("recentCoverage", { count: data.draws.length })}
               </p>
             )}
           </section>
@@ -337,7 +410,8 @@ export function PlayerBalance({
           locale={locale}
           urls={urls}
           onClose={() => setReview(null)}
-          onSent={() => {
+          onSent={(entry) => {
+            setClaimId(entry.id);
             setReview(null);
             setSelected([]);
           }}
@@ -363,36 +437,39 @@ export function PlayerBalance({
       {wallet.account && (
         <section className="retail-earnings">
           <h2>{p("earnings")}</h2>
-          {prizes.map((prize) => (
-            <article className="earning-card" key={prize.ticketId.toString()}>
-              <div className="section-top">
-                <strong>
-                  <Gift size={19} /> {p("winner")}
-                </strong>
-              </div>
-              <strong className="earning-amount">
-                ${money(prize.net.toString(), locale, 2)} USDC
-              </strong>
-              <NumberBalls
-                numbers={[...prize.normals]}
-                bonus={prize.bonusball}
-                small
-              />
-              <div className="earning-actions">
+          {[...new Set(prizes.map((p) => p.draw.id.toString()))].map((id) => {
+            const group = prizes.filter((p) => p.draw.id.toString() === id),
+              total = group.reduce((sum, p) => sum + p.net, 0n);
+            const free = group.filter((p) => isFreeTicketTier(p.tier)).length;
+            return (
+              <article className="earning-summary" key={id}>
+                <Gift size={22} aria-hidden="true" />
+                <div className="earning-summary-label">
+                  <strong>
+                    {p("winner")} ·{" "}
+                    {free === group.length
+                      ? p("freeTicketCount", { count: free })
+                      : p("ticketTotal", { count: group.length })}
+                  </strong>
+                  <DrawTime
+                    timestamp={Number(group[0].draw.state.drawingTime)}
+                    locale={locale}
+                  />
+                </div>
+                {free !== group.length && (
+                  <strong>${money(total.toString(), locale, 2)}</strong>
+                )}
                 <RouteLink
-                  to={{ view: "tickets", draw: prize.draw.id.toString() }}
+                  to={{ view: "tickets", draw: id }}
                   navigate={navigate}
+                  className="text-button"
                 >
                   {p("viewTickets")}
                   <ArrowRight size={16} />
                 </RouteLink>
-                <RouteLink to={{ view: "play" }} navigate={navigate}>
-                  {p("playAgain")}
-                  <ArrowRight size={16} />
-                </RouteLink>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
           {wallet.account && (
             <ClaimedEarnings
               account={wallet.account}

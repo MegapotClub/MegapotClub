@@ -54,6 +54,7 @@ const PlayerBalance = lazy(() =>
   import("./PlayerBalance.tsx").then((m) => ({ default: m.PlayerBalance })),
 );
 import { playCopy } from "./playCopy.ts";
+import { useTransactionRecovery } from "./transactions.ts";
 import { usePlayerAccount, useReceiptRefresh } from "./playerQuery.ts";
 import { RouteLink } from "./RetailPrimitives.tsx";
 
@@ -113,6 +114,7 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
   const p = playCopy(locale);
   const wallet = useWallet();
   useReceiptRefresh();
+  useTransactionRecovery(urls);
   const viewLabel = (v: View) =>
     v === "draw"
       ? p("home")
@@ -332,10 +334,10 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
           )}
           {view === "play" && (
             <Purchase
-              observedAt={snapshot.blockTime}
               stale={stale}
               draw={draw}
               locale={locale}
+              urls={urls}
               route={route}
               navigate={changeRoute}
             />
@@ -412,6 +414,9 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
             }}
           >
             {m.about}
+          </a>
+          <a href="https://megapot.io" target="_blank" rel="noreferrer">
+            Megapot ↗
           </a>
           <label className="language-control">
             <Globe2 size={16} />
@@ -557,16 +562,7 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
                     <Brand compact />
                     <span>{p("support")}</span>
                   </a>
-                ) : (
-                  <button
-                    className="brand-support"
-                    onClick={() => setToast(p("supportPending"))}
-                    aria-label={`Megapot Club ${p("support")}`}
-                  >
-                    <Brand compact />
-                    <span>{p("support")}</span>
-                  </button>
-                )}
+                ) : null}
               </div>
             </div>
           )}

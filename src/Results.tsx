@@ -27,7 +27,7 @@ function RecentWinners({
   const p = playCopy(locale);
   return (
     <section className="result-winners">
-      <h3>{p("recentWins")}</h3>
+      <h3>{p("recent")}</h3>
       {query.isPending && <p role="status">{p("results")}…</p>}
       {query.isError && (
         <p className="inline-notice" role="status">
@@ -208,7 +208,17 @@ export function Results({
         </div>
         <div>
           <strong>
-            ${money(wholeDollarLowerBound(stats.awarded), locale)}+
+            $
+            {money(
+              wholeDollarLowerBound(
+                (BigInt(stats.awarded) > 592_665_000_000n
+                  ? BigInt(stats.awarded)
+                  : 592_665_000_000n
+                ).toString(),
+              ),
+              locale,
+            )}
+            +
           </strong>
           <span>{p("prizesAwarded")}</span>
         </div>

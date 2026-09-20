@@ -129,7 +129,7 @@ export function TicketCollections({
           {!collections && selectedQuery.isPending && (
             <p role="status">{p("checkingPrizes")}</p>
           )}
-          {page === 1 && collections?.[0] && (
+          {page === 1 && route.period !== "past" && collections?.[0] && (
             <>
               <h2>{p("upcoming")}</h2>
               {card(collections[0])}

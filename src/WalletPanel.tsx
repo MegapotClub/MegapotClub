@@ -12,7 +12,6 @@ import {
   useTransactions,
   journalStorageAvailable,
   reconcile,
-  forgetUnsubmitted,
 } from "./transactions.ts";
 
 export function WalletConnection({
@@ -79,7 +78,7 @@ export function TransactionActivity({
   );
   useQuery({
     queryKey: ["journal-receipts", chainId, urls, account?.toLowerCase()],
-    enabled: pending.length > 0,
+    enabled: chainId !== 8453 && pending.length > 0,
     queryFn: async () => {
       // Receipt reads only. Signing and resubmission remain explicit separate actions.
       for (const entry of pending.slice(0, 5))
@@ -129,6 +128,19 @@ export function TransactionActivity({
               {["pending", "wallet", "unknown"].includes(entry.status) && (
                 <details className="replacement-form">
                   <summary>{c("replacement")}</summary>
+                  {entry.recovery?.candidates.map((hash) => (
+                    <button
+                      key={hash}
+                      className="text-button"
+                      onClick={() =>
+                        void reconcile(urls, entry, hash).catch(() =>
+                          setError(c("failed")),
+                        )
+                      }
+                    >
+                      {c("review")} · {hash.slice(0, 10)}…{hash.slice(-4)}
+                    </button>
+                  ))}
                   <label>
                     {c("transactionHash")}
                     <input
@@ -154,14 +166,6 @@ export function TransactionActivity({
                     {playCopy(locale)("checkTransaction")}
                   </button>
                 </details>
-              )}
-              {!entry.hash && ["wallet", "unknown"].includes(entry.status) && (
-                <button
-                  className="text-button"
-                  onClick={() => forgetUnsubmitted(entry.id)}
-                >
-                  {c("dismissUnknown")}
-                </button>
               )}
             </div>
           </article>

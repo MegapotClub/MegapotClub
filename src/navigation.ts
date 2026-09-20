@@ -60,8 +60,10 @@ export function parseRoute(hash: string): Route {
   if (view === "results" && params.get("resultTab") === "prizes")
     route.resultTab = "prizes";
   const ref = params.get("ref");
-  if (view === "play" && ref && /^0x[0-9a-fA-F]{40}$/.test(ref))
-    route.ref = ref;
+  // Retain invalid explicit invitations so checkout can explain them instead of silently
+  // attributing that purchase to the default referrer. URL text remains bounded data.
+  if (view === "play" && params.has("ref"))
+    route.ref = (ref ?? "").slice(0, 160);
   if (view === "play" && params.get("checkout") === "1") route.checkout = true;
   if (view === "play" && params.get("choose") === "1") route.choose = true;
   const draw = params.get("draw") ?? (view === "results" ? deep : undefined);
@@ -115,7 +117,7 @@ export function parseRoute(hash: string): Route {
 export function routeHref(route: Route): string {
   const params = new URLSearchParams();
   if (route.resultTab) params.set("resultTab", route.resultTab);
-  if (route.ref) params.set("ref", route.ref);
+  if (route.ref !== undefined) params.set("ref", route.ref);
   if (route.checkout) params.set("checkout", "1");
   if (route.choose) params.set("choose", "1");
   if (route.draw) params.set("draw", route.draw);

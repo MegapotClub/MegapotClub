@@ -14,6 +14,8 @@ export function useSnapshot(rootPath: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [live, setLive] = useState(false);
+  const settlement = useRef(snapshot.current.closesAt + 300);
+  settlement.current = snapshot.current.closesAt + 300;
   const generation = useRef(0);
   const busy = useRef(false);
   const nextRefresh = useRef(0);
@@ -78,7 +80,11 @@ export function useSnapshot(rootPath: string) {
   const refresh = useCallback(async () => {
     if (busy.current || Date.now() < nextRefresh.current) return;
     nextRefresh.current = Date.now() + 5_000;
-    nextAutomatic.current = Date.now() + 60_000;
+    nextAutomatic.current =
+      Date.now() +
+      (Math.abs(Date.now() / 1000 - settlement.current) < 600
+        ? 15_000
+        : 60_000);
     const controller = new AbortController();
     attempt.current = controller;
     busy.current = true;
@@ -104,7 +110,8 @@ export function useSnapshot(rootPath: string) {
       }
     } catch {
       if (run === generation.current) {
-        nextRefresh.current = Date.now() + 30_000;
+        nextRefresh.current = Date.now() + 60_000;
+        nextAutomatic.current = Date.now() + 60_000;
         setError(true);
       }
     } finally {
@@ -126,7 +133,7 @@ export function useSnapshot(rootPath: string) {
     const timer = window.setInterval(() => {
       if (!document.hidden && Date.now() >= nextAutomatic.current)
         void refresh();
-    }, 120_000);
+    }, 5_000);
     const onVisible = () => {
       if (!document.hidden && Date.now() >= nextAutomatic.current)
         void refresh();

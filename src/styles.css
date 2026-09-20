@@ -4377,7 +4377,7 @@ input[type="range"] {
   border-bottom: 1px solid var(--line);
   scrollbar-width: thin;
 }
-.recent-wins-strip a {
+.recent-wins-strip .recent-win {
   display: inline-flex;
   gap: 6px;
 }
@@ -4737,12 +4737,6 @@ input[type="range"] {
   font-size: 18px;
   border-radius: 14px;
 }
-.selection-note {
-  text-align: center;
-  font-size: 13px;
-  color: var(--muted);
-  margin: 12px 0 26px;
-}
 .learn-section {
   margin-top: 28px;
 }
@@ -4825,6 +4819,29 @@ input[type="range"] {
 .checkout-summary .draw-time {
   font-size: 14px;
   display: block;
+}
+.checkout-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 22px;
+}
+.checkout-actions .button {
+  margin: 0;
+}
+.checkout-actions .call-inspector {
+  margin: 0;
+}
+.checkout-actions .fine-print {
+  margin: 0;
+}
+.checkout-confirmed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 750;
+  color: var(--accent-ink);
+  margin: 0;
 }
 .profile-menu {
   display: flex;
@@ -6153,4 +6170,237 @@ input[type="range"] {
 
 .player-balance > .review-card {
   margin-bottom: 28px;
+}
+
+/* Compact number editing keeps bulk controls stationary above the selection. */
+.compact-choices {
+  display: grid;
+  gap: 0;
+}
+.bulk-ticket-tools {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.bulk-ticket-tools .button {
+  padding: 8px 12px;
+  min-height: 40px;
+}
+.compact-ticket-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 43px;
+  border-bottom: 1px solid var(--line);
+}
+.ticket-row-index {
+  width: 24px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.editable-balls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+}
+.editable-ball {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0;
+}
+.editable-ball.bonus {
+  background: #ffe6d8;
+  color: #aa410c;
+  border-color: #ffc5a9;
+  margin-left: 3px;
+}
+.compact-remove {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  width: 34px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.ticket-stage-time {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 1;
+}
+.ticket-stage {
+  position: relative;
+  padding-top: 45px;
+}
+.win-share-preview img {
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+  display: block;
+}
+.win-share-preview p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.win-share-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.win-share-button {
+  gap: 8px;
+}
+.x-mark {
+  font-size: 20px;
+  line-height: 1;
+}
+.share-reward-hint {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.claim-success {
+  margin: 24px 0;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.claim-success h2 {
+  margin-top: 0;
+}
+.earning-summary .win-share-button {
+  font-size: 13px;
+  padding: 6px 10px;
+  min-height: 36px;
+}
+.invite-lifetime {
+  display: grid;
+  gap: 4px;
+  margin: 18px 0 28px;
+  text-align: center;
+  color: var(--muted);
+}
+.invite-lifetime strong {
+  font:
+    800 40px/1.1 "Outfit Variable",
+    sans-serif;
+  color: var(--ink);
+}
+.invite-steps {
+  display: grid;
+  gap: 14px;
+  text-align: left;
+  margin: 28px 0;
+}
+.invite-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  padding: 18px;
+}
+.invite-step > svg {
+  color: var(--blue);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.invite-step h3 {
+  margin: 0 0 5px;
+  font-size: 18px;
+}
+.invite-step p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.free-ticket-award {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+@media (min-width: 901px) {
+  .site-header > .desktop-nav {
+    flex: 1;
+    justify-content: center;
+    margin: 0;
+  }
+  .site-header > .header-actions {
+    margin-left: 0;
+  }
+}
+@media (max-width: 380px) {
+  .compact-ticket-row {
+    gap: 4px;
+  }
+  .editable-balls {
+    gap: 4px;
+  }
+  .editable-ball {
+    width: 31px;
+    height: 31px;
+  }
+  .ticket-row-index {
+    width: 20px;
+  }
+}
+
+/* The same recent-win data appears as a compact, celebratory Home ribbon. */
+.recent-wins-strip {
+  background: var(--blue);
+  color: white;
+  border: 0;
+  border-radius: 18px;
+  padding: 16px 20px;
+  box-shadow: 0 8px 24px #244be91a;
+  gap: 24px;
+}
+.recent-wins-strip .recent-win {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+.recent-wins-strip .recent-win > svg {
+  color: var(--orange);
+}
+.recent-wins-strip strong {
+  color: #ffb28e;
+}
+.recent-wins-strip .account-name {
+  color: white;
+}
+.recent-wins-strip .stats-link {
+  color: white;
+}
+.referral-earned {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+.invite-steps h3 {
+  margin: 12px 0 8px;
+}
+.invite-steps p {
+  margin-bottom: 0;
+  color: var(--muted);
 }

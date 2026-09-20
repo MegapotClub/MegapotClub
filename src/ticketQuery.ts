@@ -42,10 +42,10 @@ export function ticketQueryOptions(
       return fetchTickets(urls, scope.address, scope.drawId, signal);
     },
     retry: false,
-    staleTime: 60_000,
+    staleTime: 25_000,
     gcTime: 300_000,
-    refetchInterval: (query) => (query.state.error ? 300_000 : 120_000),
+    refetchInterval: (query) => (query.state.error ? 300_000 : 30_000),
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   });
 }

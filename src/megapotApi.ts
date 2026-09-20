@@ -11,6 +11,8 @@ export type IndexedWin = {
   claimed_tx_hash: string | null;
   normals: number[];
   bonusball: number;
+  matched_normals?: number;
+  bonusball_match?: boolean;
 };
 export type PrizeTier = {
   tier_id: number;
@@ -145,6 +147,12 @@ export function parseIndexedWins(
       w.normals.length !== 5 ||
       new Set(w.normals).size !== 5 ||
       w.normals.some((n) => !Number.isInteger(n) || n < 1 || n > 255) ||
+      (w.matched_normals !== undefined &&
+        (!Number.isInteger(w.matched_normals) ||
+          w.matched_normals < 0 ||
+          w.matched_normals > 5)) ||
+      (w.bonusball_match !== undefined &&
+        typeof w.bonusball_match !== "boolean") ||
       !Number.isInteger(w.bonusball) ||
       w.bonusball < 1 ||
       w.bonusball > 255 ||
@@ -165,6 +173,12 @@ export function parseIndexedWins(
       claimed_tx_hash: w.claimed_tx_hash,
       normals: [...w.normals],
       bonusball: w.bonusball,
+      ...(w.matched_normals !== undefined
+        ? { matched_normals: w.matched_normals }
+        : {}),
+      ...(w.bonusball_match !== undefined
+        ? { bonusball_match: w.bonusball_match }
+        : {}),
     };
   });
 }
@@ -324,3 +338,25 @@ export const roundDatesQuery = () =>
     initialData: resultHistorySeed,
     initialDataUpdatedAt: 1,
   });
+
+export async function readWalletDrawWins(
+  account: string,
+  draw: string,
+  signal?: AbortSignal,
+  cursor?: string,
+) {
+  if (
+    !address(account) ||
+    !/^[1-9]\d{0,17}$/.test(draw) ||
+    (cursor && !/^[A-Za-z0-9_=-]{1,2048}$/.test(cursor))
+  )
+    throw new Error("invalidApi");
+  const result = await readApi(
+    `wallets/${account}/wins/rounds/${draw}?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    signal,
+  );
+  return {
+    data: parseIndexedWins(result, { account, draw }, 100),
+    nextCursor: parseNextCursor(result),
+  };
+}

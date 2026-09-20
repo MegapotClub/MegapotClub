@@ -514,6 +514,10 @@ export function VaultWorkspace({
   }
   useEffect(() => {
     void refresh();
+    const timer = setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 60_000);
+    return () => clearInterval(timer);
   }, [
     wallet.account,
     wallet.chainId,
@@ -598,6 +602,14 @@ export function VaultWorkspace({
       if (run === historyGeneration.current) setBusy(false);
     }
   }
+  useEffect(() => {
+    if (tab !== "activity" || !ready || !wallet.account) return;
+    void scan();
+    const timer = setInterval(() => {
+      if (!document.hidden) void scan();
+    }, 120_000);
+    return () => clearInterval(timer);
+  }, [tab, ready, wallet.account, product, ethereumUrls, baseUrls]);
   const lots =
     product === "base-usdc" &&
     ["claimDeposit", "claimExit"].includes(operation);
@@ -702,16 +714,6 @@ export function VaultWorkspace({
       <section className="action-card">
         <div className="section-top">
           <h2>{v("wallet")}</h2>
-          {ready && wallet.account && (
-            <button
-              className="icon-button"
-              aria-label={c("refresh")}
-              disabled={busy}
-              onClick={() => void refresh()}
-            >
-              <RefreshCw size={18} />
-            </button>
-          )}
         </div>
         <WalletConnection locale={locale} urls={urls} chainId={chainId} />
         {chainId === 1 && (
@@ -1016,14 +1018,6 @@ export function VaultWorkspace({
           <section className="action-card">
             <div className="section-top">
               <h2>{v("history")}</h2>
-              <button
-                className="button button-outline"
-                disabled={!canReview || busy}
-                onClick={() => void scan()}
-              >
-                <RefreshCw size={16} />
-                {c("refresh")}
-              </button>
             </div>
             {history && (
               <>

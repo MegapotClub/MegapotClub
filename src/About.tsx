@@ -51,7 +51,7 @@ export function About({ messages: m }: { messages: Messages }) {
             <p>{m.verifiablySecureDetail}</p>
             <a
               className="source-code-link"
-              href="about:blank"
+              href="https://github.com/MegapotClub/MegapotClub"
               target="_blank"
               rel="noopener noreferrer"
             >
