@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 4173",
+    "prebuild": "node scripts/clean-build.mjs",
     "build": "tsc --noEmit && vite build && vite build --ssr src/entry-server.tsx --outDir .build/ssr && node scripts/finalize.mjs",
     "test": "node --experimental-test-module-mocks --test --test-concurrency=2 --test-reporter=tap tests/*.test.ts tests/*.test.mjs",
     "contracts:build": "node scripts/compile-contracts.mjs",

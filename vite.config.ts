@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { exportPreview } from "./tests/browser/exportPreview.ts";
 
 export default defineConfig(({ mode }) => {
   const previewHost = loadEnv(mode, process.cwd(), "DEV_").DEV_ALLOWED_HOST;
@@ -8,6 +9,7 @@ export default defineConfig(({ mode }) => {
     base: "./",
     plugins: [
       react(),
+      exportPreview(),
       {
         name: "bundle-inventory",
         apply: "build",

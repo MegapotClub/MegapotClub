@@ -124,6 +124,7 @@ async function files(dir) {
 }
 const assets = Object.create(null);
 for (const filename of (await files("dist")).sort()) {
+  if (filename === "dist/release.json") continue;
   const content = await fs.readFile(filename);
   assets[filename.slice(5)] = {
     sha256: createHash("sha256").update(content).digest("hex"),
