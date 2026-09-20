@@ -1,0 +1,38 @@
+{
+  "id": "./",
+  "name": "Megapot Club",
+  "short_name": "Megapot Club",
+  "description": "Play the Megapot internet lottery with the Club.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#244be9",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Play", "url": "./#play" },
+    { "name": "Tickets", "url": "./#tickets" },
+    { "name": "Balance", "url": "./#winnings" }
+  ]
+}

@@ -1,6 +1,6 @@
 # Static release
 
-The canonical origin is `https://megapotclub.eth.limo`. Canonical, Open Graph, X card, robots and sitemap URLs are rendered into every HTML entrypoint; crawlers do not need JavaScript. `public/og.png` is the neutral Club social card. Fragment routes share this site card because fragments are not sent to a web server. No per-wallet or per-win card is generated.
+The canonical origin is `https://megapotclub.eth.limo`. Canonical, Open Graph, X card, robots and sitemap URLs are rendered into every HTML entrypoint; crawlers do not need JavaScript. `public/og.png` is the neutral Club social card. Fragment routes share this site card because fragments are not sent to a web server. No per-wallet or per-win metadata is generated on the server. Win images are generated locally and shared as actual attachments; their QR preserves referral attribution.
 
 From a clean, committed checkout with pinned Node/npm:
 
@@ -22,3 +22,5 @@ This checks served bytes against the local artifact without invoking chain APIs.
 For ENS/IPFS, pin the accepted directory, record the resulting CID alongside its commit and archive hash, and verify it through an IPFS gateway before changing the ENS content record. Configure `megapotclub.eth` to that content record. Actual eth.limo resolution and X's remote crawler cannot be verified before deployment; test both afterward. See [eth.limo documentation](https://eth-limo.gitbook.io/documentation).
 
 For rollback, retain the previous pinned CID and artifact. Restore the prior ENS content record, then repeat served-byte and browser checks; gateway/crawler caches may delay the visible change. A static site rollback does not reverse any blockchain transaction or custody deployment.
+
+Every exported locale links to the relative PWA manifest and Apple touch icon. The manifest provides app identity, standalone launch, 192/512px icons, a maskable icon and route shortcuts; Coinbase/RainbowKit metadata uses the canonical app URL and icon. Installation requires a supporting browser and HTTPS (or localhost). A service worker is intentionally absent: installation does not require one, and the app does not offer offline financial operations. Verify installation on Android/iOS after deployment; the HTTP preview does not prove native installation or image-sharing support.

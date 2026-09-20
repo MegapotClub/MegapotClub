@@ -42,6 +42,33 @@ for (let offset = 8; offset < card.length; ) {
   );
   offset += size + 12;
 }
+const appManifest = JSON.parse(
+  await fs.readFile(path.join(root, "manifest.webmanifest"), "utf8"),
+);
+assert.equal(appManifest.name, APP_NAME);
+assert.equal(appManifest.id, "./");
+assert.equal(appManifest.scope, "./");
+assert.equal(appManifest.start_url, "./");
+assert.equal(appManifest.display, "standalone");
+for (const [size, purpose] of [
+  [192, "any"],
+  [512, "any"],
+  [512, "maskable"],
+]) {
+  const icon = appManifest.icons.find(
+    (item) => item.sizes === `${size}x${size}` && item.purpose === purpose,
+  );
+  assert.ok(icon && icon.type === "image/png" && !icon.src.startsWith("/"));
+  const png = await fs.readFile(path.join(root, icon.src));
+  assert.equal(png.readUInt32BE(16), size);
+  assert.equal(png.readUInt32BE(20), size);
+  for (let offset = 8; offset < png.length; ) {
+    const count = png.readUInt32BE(offset),
+      kind = png.subarray(offset + 4, offset + 8).toString("ascii");
+    assert.ok(["IHDR", "IDAT", "PLTE", "tRNS", "IEND"].includes(kind));
+    offset += count + 12;
+  }
+}
 const locales = ["en", "es", "pt-BR", "fr", "de", "zh-CN", "ja", "ko"];
 for (const locale of ["", ...locales]) {
   const file = path.join(root, locale, "index.html");
@@ -52,6 +79,17 @@ for (const locale of ["", ...locales]) {
   assert.ok(html.includes(`<title>${messages.title}</title>`), file);
   assert.ok(html.includes(`lang="${locale || "en"}"`), file);
   assert.ok(html.includes(`content="${ORIGIN}/og.png"`), file);
+  assert.ok(
+    html.includes(
+      `rel="manifest" href="${locale ? "../" : "./"}manifest.webmanifest"`,
+    ),
+    file,
+  );
+  assert.ok(html.includes('rel="apple-touch-icon"'), file);
+  assert.ok(
+    html.includes(`name="application-name" content="${APP_NAME}"`),
+    file,
+  );
   const canonical = `${ORIGIN}/${locale ? locale + "/" : ""}`;
   assert.ok(html.includes(`<link rel="canonical" href="${canonical}"`), file);
   assert.ok(html.includes(`property="og:url" content="${canonical}"`), file);

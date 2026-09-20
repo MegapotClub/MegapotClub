@@ -25,3 +25,5 @@ Typography is Outfit, with its SIL Open Font License included in `licenses/`. Th
 Use `social/megapot-club-x-banner.png` (1500 × 500) for the Club profile header. The minimalist cobalt artwork reads **“$213,017 jackpot was hit!”** with **“THE INTERNET LOTTERY”** at the bottom right. The headline sits near the golden-ratio height measured from the bottom; the lower-left area stays clear for the profile photo.
 
 This is a historical win announcement, not a live prize-pool counter. The higher-resolution flattened master is `social/megapot-club-x-banner-master.png`; vector logo masters are in `svg/`. The banner's headline is rasterized in both PNGs.
+
+The static link preview is `public/og.png`. It uses the Club lockup and does not advertise a wallet-specific win. Generated win attachments use the outlined on-dark lockup and a referral QR. Installable app icons live in `public/icons/`; the manifest is `public/manifest.webmanifest`.
