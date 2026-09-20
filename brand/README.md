@@ -22,4 +22,6 @@ Typography is Outfit, with its SIL Open Font License included in `licenses/`. Th
 
 ## X banner
 
-Use `social/megapot-club-x-banner.png` for the Club profile header. The wide, opaque PNG has a minimalist cobalt background, a light wordmark, and the peach Club badge. Its lower-left area is clear for the profile photo. It is a neutral identity asset without a slogan or prize claim.
+Use `social/megapot-club-x-banner.png` (1500 × 500) for the Club profile header. The minimalist cobalt artwork reads **“$213,017 jackpot was hit!”** with **“THE INTERNET LOTTERY”** at the bottom right. The headline sits near the golden-ratio height measured from the bottom; the lower-left area stays clear for the profile photo.
+
+This is a historical win announcement, not a live prize-pool counter. The higher-resolution flattened master is `social/megapot-club-x-banner-master.png`; vector logo masters are in `svg/`. The banner's headline is rasterized in both PNGs.
