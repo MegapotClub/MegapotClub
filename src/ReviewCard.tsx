@@ -28,6 +28,7 @@ export function ReviewCard({
     wallet = useWallet(),
     revision = useRef(wallet.revision),
     [busy, setBusy] = useState(false),
+    [waiting, setWaiting] = useState(false),
     [error, setError] = useState("");
   const submission = useRef<AbortController | null>(null);
   useEffect(() => () => submission.current?.abort(), []);
@@ -141,33 +142,50 @@ export function ReviewCard({
           {error}
         </p>
       )}
+      {waiting && (
+        <p role="status" className="inline-notice">
+          {c("wallet")}
+        </p>
+      )}
       <div className="review-buttons">
         <button
           className="button button-primary"
-          disabled={!matches || busy}
+          disabled={!matches || (busy && !waiting)}
           onClick={async () => {
-            setBusy(true);
-            setError("");
+            if (busy && !waiting) return;
+            submission.current?.abort();
             const controller = new AbortController();
             submission.current = controller;
+            setBusy(true);
+            setWaiting(false);
+            setError("");
             try {
               const sent = await submitReview(
                 urls,
                 review,
                 claiming ? wallet.revision : revision.current,
                 controller.signal,
-                (fresh) => queryClient.setQueryData(queryKey, fresh),
+                (fresh) => {
+                  if (!controller.signal.aborted)
+                    queryClient.setQueryData(queryKey, fresh);
+                },
+                () => {
+                  if (!controller.signal.aborted) setWaiting(true);
+                },
               );
               if (!controller.signal.aborted) onSent(sent);
             } catch (e) {
               if (!controller.signal.aborted) setError(errorCopy(locale, e));
             } finally {
-              if (!controller.signal.aborted) setBusy(false);
-              if (submission.current === controller) submission.current = null;
+              if (submission.current === controller) {
+                setBusy(false);
+                setWaiting(false);
+                submission.current = null;
+              }
             }
           }}
         >
-          {busy ? c("working") : c("sign")}
+          {waiting ? c("retryWallet") : busy ? c("working") : c("sign")}
           <ChevronRight size={18} />
         </button>
       </div>

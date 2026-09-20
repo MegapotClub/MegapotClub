@@ -164,12 +164,19 @@ export function createWalletSession(config: Config) {
       revision: number,
       chainId: 1 | 8453,
       urls: string[],
+      onWalletRequest?: () => void,
+      signal?: AbortSignal,
     ) {
+      if (signal?.aborted) throw new Error("reviewCancelled");
       const provider = await session.assertWallet(account, revision);
       const chain = await passiveRead(
         provider.request({ method: "eth_chainId" }),
       );
-      if (Number(chain) !== chainId) await session.switchChain(chainId, urls);
+      if (signal?.aborted) throw new Error("reviewCancelled");
+      if (Number(chain) !== chainId) {
+        onWalletRequest?.();
+        await session.switchChain(chainId, urls);
+      }
       if ((await session.assertTarget(account, revision, chainId)) !== provider)
         throw new Error("walletChanged");
       return provider;
@@ -216,7 +223,7 @@ export function walletError(error: unknown): string {
       item.name === "UserRejectedRequestError"
     )
       return "rejected";
-    if (item.code === -32002) return "walletPending";
+    if (item.code === -32002) return "walletNoResponse";
     value = item.cause;
   }
   return "walletFailed";

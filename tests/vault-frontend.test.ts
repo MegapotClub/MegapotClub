@@ -261,7 +261,7 @@ test("dismissal during preflight aborts without journaling or sending", async ()
       1,
       controller.signal,
     ),
-    /reviewChanged/,
+    /reviewCancelled/,
   );
   assert.equal(sends.length, 0);
   assert.equal(journals().length, 0);

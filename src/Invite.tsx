@@ -135,13 +135,7 @@ export function Invite({
           </strong>
           <button
             className="button button-primary"
-            disabled={
-              busy ||
-              Boolean(
-                claim &&
-                  ["wallet", "pending", "unknown"].includes(claim.status),
-              )
-            }
+            disabled={busy}
             onClick={async () => {
               if (!w.account || request.current) return;
               const controller = new AbortController();
@@ -170,9 +164,6 @@ export function Invite({
                 <LoaderCircle size={18} className="spinning" />
                 {p("preparingClaim")}
               </>
-            ) : claim &&
-              ["wallet", "pending", "unknown"].includes(claim.status) ? (
-              p("pending")
             ) : (
               p("claim")
             )}

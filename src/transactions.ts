@@ -7,7 +7,7 @@ import {
   type Hex,
   type RpcTransactionRequest,
 } from "viem";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   assertWallet,
   prepareWalletTarget,
@@ -75,7 +75,6 @@ const MAX_STORAGE_CHARS = 400_000;
 const MAX_RESOLVED = 60;
 const UNRESOLVED = new Set(["wallet", "pending", "unknown"]);
 let memory: Journal[] = [];
-let submitting = false;
 let storageFailed = false;
 export const journalStorageAvailable = () => !storageFailed;
 const statuses = [
@@ -244,8 +243,7 @@ export function parseJournal(value: unknown): Journal[] {
       typeof v.retryOf === "string" &&
       v.retryOf.length > 0 &&
       v.retryOf.length <= 80 &&
-      v.retryOf !== v.id &&
-      v.kind === "claim"
+      v.retryOf !== v.id
     )
       result.retryOf = v.retryOf;
     if (v.status === "superseded") {
@@ -315,32 +313,50 @@ export function journals(): Journal[] {
 export async function writeJournal(
   entry: Journal,
   requireDurable = false,
-): Promise<void> {
+  walletResponse = false,
+): Promise<Journal> {
   if (typeof navigator === "undefined" || !navigator.locks)
     throw new Error("trackingUnavailable");
-  await navigator.locks.request("megapot-club:journal-write", async () => {
+  return navigator.locks.request("megapot-club:journal-write", async () => {
     const previous = journals();
-    const current = previous.find((x) => x.id === entry.id);
+    let current = previous.find((x) => x.id === entry.id);
+    // A candidate discovered for a hashless attempt is not proof that a later
+    // wallet response refers to that transaction. Preserve both distinct hashes.
+    if (
+      walletResponse &&
+      entry.hash &&
+      current?.hash &&
+      entry.hash !== current.hash
+    ) {
+      entry = {
+        ...entry,
+        id: `wallet-${entry.chainId}-${entry.hash.slice(2)}`,
+        retryOf: current.id,
+      };
+      current = previous.find((x) => x.id === entry.id);
+    }
+    if (
+      current &&
+      (current.account.toLowerCase() !== entry.account.toLowerCase() ||
+        current.chainId !== entry.chainId ||
+        current.kind !== entry.kind ||
+        current.to.toLowerCase() !== entry.to.toLowerCase() ||
+        BigInt(current.value ?? "0") !== BigInt(entry.value ?? "0") ||
+        (current.data ? keccak256(current.data) : current.callHash) !==
+          (entry.data ? keccak256(entry.data) : entry.callHash))
+    )
+      throw new Error("trackingUnavailable");
     if (
       current &&
       !UNRESOLVED.has(current.status) &&
       !(
         current.status === "superseded" &&
+        walletResponse &&
         entry.hash &&
         ["pending", "confirmed", "reverted", "replaced"].includes(entry.status)
       )
     )
-      return;
-    if (
-      current &&
-      !sameCall(current, {
-        to: entry.to,
-        input: entry.data ?? "0x",
-        value: BigInt(entry.value ?? "0"),
-      }) &&
-      current.callHash !== entry.callHash
-    )
-      throw new Error("trackingUnavailable");
+      return current;
     if (current?.hash && !entry.hash)
       entry = {
         ...entry,
@@ -412,6 +428,7 @@ export async function writeJournal(
       }
     }
     window.dispatchEvent(new Event(EVENT));
+    return entry;
   });
 }
 const write = writeJournal;
@@ -622,9 +639,33 @@ export async function findTransactionCandidates(
   });
 }
 
+/** Rotate bounded recovery work so old silent approvals cannot starve receipts. */
+export function recoveryBatch(
+  items: Journal[],
+  after?: string,
+  limit = 5,
+): Journal[] {
+  const eligible = items.filter(
+    (e) =>
+      e.chainId === 8453 &&
+      UNRESOLVED.has(e.status) &&
+      (e.hash ||
+        (e.recovery &&
+          (e.kind === "claim" || (e.kind === "purchase" && e.purchase)))),
+  );
+  const start =
+    Math.max(0, eligible.findIndex((e) => e.id === after) + 1) %
+    (eligible.length || 1);
+  return [...eligible.slice(start), ...eligible.slice(0, start)].slice(
+    0,
+    limit,
+  );
+}
+
 /** Receipt polling is mounted once by the shell and never invokes the wallet. */
 export function useTransactionRecovery(urls: string[]) {
   const items = useTransactions();
+  const cursor = useRef<string | undefined>(undefined);
   const pending = items.filter(
     (e) => e.chainId === 8453 && UNRESOLVED.has(e.status),
   );
@@ -636,12 +677,14 @@ export function useTransactionRecovery(urls: string[]) {
     ],
     enabled: pending.length > 0,
     queryFn: async () => {
-      for (const entry of pending.slice(0, 5)) {
+      for (const entry of recoveryBatch(pending, cursor.current)) {
+        cursor.current = entry.id;
         if (entry.hash) await reconcile(urls, entry).catch(() => {});
         else {
           await findTransactionCandidates(urls, entry).catch(() => {});
           const latest = journals().find((j) => j.id === entry.id);
-          for (const hash of latest?.recovery?.candidates ?? []) {
+          if (!latest || !UNRESOLVED.has(latest.status)) continue;
+          for (const hash of latest.recovery?.candidates ?? []) {
             await reconcile(urls, latest!, hash).catch(() => {});
             if (
               !UNRESOLVED.has(
@@ -662,21 +705,25 @@ export function useTransactionRecovery(urls: string[]) {
   });
 }
 
-/** A second explicit click may retry only the identical, NFT-consuming claim.
- * Unknown attempts remain tracked; purchases and known pending hashes never qualify. */
-export function canRetryClaim(entry: Journal, review: Review): boolean {
-  const call = review.calls[0];
-  return (
-    review.action.kind === "claim" &&
-    call.kind === "claim" &&
-    call.to.toLowerCase() === JACKPOT.toLowerCase() &&
-    entry.kind === "claim" &&
-    entry.chainId === 8453 &&
-    entry.account.toLowerCase() === review.account.toLowerCase() &&
-    !entry.hash &&
-    ["wallet", "unknown"].includes(entry.status) &&
-    sameCall(entry, { to: call.to, input: call.data, value: call.value })
-  );
+/** Stop waiting in this view without cancelling or losing the wallet's eventual result. */
+function awaitWalletResult<T>(
+  result: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return result;
+  // An already-aborted caller must still observe rejection of detached work.
+  void result.catch(() => {});
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new Error("reviewCancelled"));
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+    result
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 async function dispatchWallet(
@@ -685,7 +732,6 @@ async function dispatchWallet(
   revision: number,
   request: RpcTransactionRequest & { chainId: Hex },
   signal?: AbortSignal,
-  validate: (entries: Journal[]) => void = () => {},
 ) {
   return navigator.locks.request("megapot-club:journal-write", async () => {
     if (
@@ -702,8 +748,7 @@ async function dispatchWallet(
       reservation.hash ||
       !journalStorageAvailable()
     )
-      throw new Error("unresolvedTransaction");
-    validate(entries);
+      throw new Error("trackingUnavailable");
     // No await separates eligibility from handing off the exact target-bound call.
     let response: Promise<unknown>;
     try {
@@ -732,18 +777,9 @@ export async function submitReview(
   walletRevision: number,
   signal?: AbortSignal,
   onFreshReview?: (review: Review) => void,
+  onWalletRequest?: () => void,
 ): Promise<Journal> {
-  if (submitting) throw new Error("walletPending");
-  const run = async (): Promise<Journal> => {
-    const unresolved = journals().filter(
-      (x) =>
-        x.account.toLowerCase() === review.account.toLowerCase() &&
-        x.chainId === 8453 &&
-        UNRESOLVED.has(x.status),
-    );
-    if (unresolved.some((x) => !canRetryClaim(x, review)))
-      throw new Error("unresolvedTransaction");
-    const retryOf = unresolved.at(-1)?.id;
+  const run = async () => {
     const retail = ["purchase", "claim", "refund", "referral"].includes(
       review.action.kind,
     );
@@ -790,12 +826,15 @@ export async function submitReview(
     ]);
     if (fresh.position.ether < gas * gasPrice)
       throw new Error("insufficientGas");
+    if (signal?.aborted) throw new Error("reviewCancelled");
     if (
       (await prepareWalletTarget(
         review.account,
         walletRevision,
         8453,
         urls,
+        onWalletRequest,
+        signal,
       )) !== w
     )
       throw new Error("walletChanged");
@@ -812,7 +851,7 @@ export async function submitReview(
         ? { purchase: storedPurchase(fresh.action) }
         : {}),
       nonce,
-      ...(retryOf ? { retryOf } : {}),
+
       recovery: {
         fromBlock: fresh.block.toString(),
         nextBlock: fresh.block.toString(),
@@ -821,6 +860,18 @@ export async function submitReview(
       createdAt: Date.now(),
       status: "wallet",
     };
+    const previous = [...journals()].reverse().find(
+      (j) =>
+        j.account.toLowerCase() === entry.account.toLowerCase() &&
+        j.chainId === entry.chainId &&
+        UNRESOLVED.has(j.status) &&
+        sameCall(j, {
+          to: entry.to,
+          input: entry.data!,
+          value: BigInt(entry.value ?? "0"),
+        }),
+    );
+    if (previous) entry.retryOf = previous.id;
     let handoff: { response: Promise<unknown> };
     try {
       await write(entry, true);
@@ -837,96 +888,68 @@ export async function submitReview(
           gas: toHex(gas + gas / 5n),
         },
         signal,
-        (entries) => {
-          if (
-            unresolved.some((old) => {
-              const current = entries.find((j) => j.id === old.id);
-              return !current || !canRetryClaim(current, fresh);
-            })
-          )
-            throw new Error("claimAlreadySent");
-          if (
-            entries.some(
-              (j) =>
-                j.id !== entry.id &&
-                j.account.toLowerCase() === entry.account.toLowerCase() &&
-                j.chainId === entry.chainId &&
-                UNRESOLVED.has(j.status) &&
-                !canRetryClaim(j, fresh),
-            )
-          )
-            throw new Error("unresolvedTransaction");
-        },
       );
     } catch (error) {
       await write({ ...entry, status: "rejected" }).catch(() => {});
       throw error;
     }
-    try {
-      const hash = await handoff.response;
-      if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash))
-        throw new Error("invalidHash");
-      entry = { ...entry, hash: hash as Hex, status: "pending" };
-      await write(entry);
+    const response = (async (): Promise<Journal> => {
       try {
-        const tx = await c.getTransaction({ hash: entry.hash! });
-        if (
-          tx.from.toLowerCase() !== entry.account.toLowerCase() ||
-          !sameCall(entry, tx)
-        )
-          throw new Error("wrongReplacement");
-        entry = { ...entry, nonce: tx.nonce, nonceConfirmed: true };
-        await write(entry);
-      } catch {
-        /* The hash is durable even before an RPC can see the transaction. */
+        const hash = await handoff.response;
+        if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash))
+          throw new Error("invalidHash");
+        entry = await write(
+          { ...entry, hash: hash as Hex, status: "pending" },
+          false,
+          true,
+        );
+        try {
+          const tx = await c.getTransaction({ hash: entry.hash! });
+          if (
+            tx.from.toLowerCase() !== entry.account.toLowerCase() ||
+            !sameCall(entry, tx)
+          )
+            throw new Error("wrongReplacement");
+          entry = { ...entry, nonce: tx.nonce, nonceConfirmed: true };
+          await write(entry);
+        } catch {
+          /* The hash is durable even before an RPC can see the transaction. */
+        }
+        // Monitoring may time out; the journal remains pending and manual reconciliation remains available.
+        void c
+          .waitForTransactionReceipt({
+            hash: entry.hash!,
+            timeout: 180_000,
+            confirmations: 2,
+            onReplaced: (replacement) => {
+              entry = {
+                ...entry,
+                hash: replacement.transaction.hash,
+                nonce: replacement.transaction.nonce,
+                nonceConfirmed: true,
+                status: "pending",
+              };
+              void write(entry).catch(() => {});
+            },
+          })
+          .then(() => reconcile(urls, entry))
+          .catch(() => {});
+        return entry;
+      } catch (error) {
+        const refused = walletRequestRefused(error);
+        await write({ ...entry, status: refused ? "rejected" : "unknown" });
+        throw new Error(refused ? walletError(error) : "walletNoResponse");
       }
-      // Monitoring may time out; the journal remains pending and manual reconciliation remains available.
-      void c
-        .waitForTransactionReceipt({
-          hash: entry.hash!,
-          timeout: 180_000,
-          confirmations: 2,
-          onReplaced: (replacement) => {
-            entry = {
-              ...entry,
-              hash: replacement.transaction.hash,
-              nonce: replacement.transaction.nonce,
-              nonceConfirmed: true,
-              status: "pending",
-            };
-            void write(entry).catch(() => {});
-          },
-        })
-        .then(() => reconcile(urls, entry))
-        .catch(() => {});
-      return entry;
-    } catch (error) {
-      const refused = walletRequestRefused(error);
-      await write({ ...entry, status: refused ? "rejected" : "unknown" });
-      throw new Error(
-        refused
-          ? walletError(error)
-          : call.kind === "claim"
-            ? "ambiguousClaim"
-            : "ambiguousTransaction",
-      );
-    }
+    })();
+    void response.catch(() => {});
+    onWalletRequest?.();
+    return { response };
   };
-  submitting = true;
-  try {
-    if (navigator.locks)
-      return await navigator.locks.request(
-        "megapot-club:submit",
-        { ifAvailable: true },
-        (lock) => {
-          if (!lock) throw new Error("walletPending");
-          return run();
-        },
-      );
-    throw new Error("trackingUnavailable");
-  } finally {
-    submitting = false;
-  }
+  if (!navigator.locks) throw new Error("trackingUnavailable");
+  // Wallet switches may never answer. They must not hold a cross-flow lock.
+  // The journal mutex still protects durable reservation and final handoff.
+  const task = await awaitWalletResult(run(), signal);
+  return awaitWalletResult(task.response, signal);
 }
 
 /** Vault submission shares the native operation journal and cross-tab mutex. Recovery never resubmits. */
@@ -935,18 +958,9 @@ export async function submitVaultReview(
   review: VaultReview,
   revision: number,
   signal?: AbortSignal,
+  onWalletRequest?: () => void,
 ): Promise<Journal> {
-  if (submitting) throw new Error("walletPending");
-  const run = async (): Promise<Journal> => {
-    if (
-      journals().some(
-        (j) =>
-          j.account.toLowerCase() === review.account.toLowerCase() &&
-          j.chainId === review.chainId &&
-          ["wallet", "unknown", "pending"].includes(j.status),
-      )
-    )
-      throw new Error("unresolvedTransaction");
+  const run = async () => {
     if (Date.now() - review.createdAt > 120_000)
       throw new Error("reviewExpired");
     if (signal?.aborted) throw new Error("reviewChanged");
@@ -990,12 +1004,15 @@ export async function submitVaultReview(
     ]);
     if (fresh.state.ether < call.value + (gas + gas / 5n) * price)
       throw new Error("insufficientGas");
+    if (signal?.aborted) throw new Error("reviewCancelled");
     if (
       (await prepareWalletTarget(
         review.account,
         revision,
         review.chainId,
         urls,
+        onWalletRequest,
+        signal,
       )) !== provider
     )
       throw new Error("walletChanged");
@@ -1013,6 +1030,18 @@ export async function submitVaultReview(
       createdAt: Date.now(),
       status: "wallet",
     };
+    const previous = [...journals()].reverse().find(
+      (j) =>
+        j.account.toLowerCase() === entry.account.toLowerCase() &&
+        j.chainId === entry.chainId &&
+        UNRESOLVED.has(j.status) &&
+        sameCall(j, {
+          to: entry.to,
+          input: entry.data!,
+          value: BigInt(entry.value ?? "0"),
+        }),
+    );
+    if (previous) entry.retryOf = previous.id;
     let handoff: { response: Promise<unknown> };
     try {
       await write(entry, true);
@@ -1034,64 +1063,62 @@ export async function submitVaultReview(
       await write({ ...entry, status: "rejected" }).catch(() => {});
       throw error;
     }
-    try {
-      const hash = await handoff.response;
-      if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash))
-        throw new Error("invalidHash");
-      entry = { ...entry, hash: hash as Hex, status: "pending" };
-      await write(entry);
+    const response = (async (): Promise<Journal> => {
       try {
-        const tx = await client.getTransaction({ hash: entry.hash! });
-        if (
-          tx.from.toLowerCase() !== entry.account.toLowerCase() ||
-          !sameCall(entry, tx)
-        )
-          throw new Error("wrongReplacement");
-        entry = { ...entry, nonce: tx.nonce, nonceConfirmed: true };
-        await write(entry);
-      } catch {
-        /* Keep the durable hash while the RPC catches up. */
+        const hash = await handoff.response;
+        if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash))
+          throw new Error("invalidHash");
+        entry = await write(
+          { ...entry, hash: hash as Hex, status: "pending" },
+          false,
+          true,
+        );
+        try {
+          const tx = await client.getTransaction({ hash: entry.hash! });
+          if (
+            tx.from.toLowerCase() !== entry.account.toLowerCase() ||
+            !sameCall(entry, tx)
+          )
+            throw new Error("wrongReplacement");
+          entry = { ...entry, nonce: tx.nonce, nonceConfirmed: true };
+          await write(entry);
+        } catch {
+          /* Keep the durable hash while the RPC catches up. */
+        }
+        void client
+          .waitForTransactionReceipt({
+            hash: entry.hash!,
+            timeout: 180_000,
+            confirmations: 2,
+            onReplaced: (r) => {
+              entry = {
+                ...entry,
+                hash: r.transaction.hash,
+                nonce: r.transaction.nonce,
+                nonceConfirmed: true,
+                status: "pending",
+              };
+              void write(entry).catch(() => {});
+            },
+          })
+          .then(() => reconcile(urls, entry))
+          .catch(() => {});
+        return entry;
+      } catch (e) {
+        const refused = walletRequestRefused(e);
+        await write({ ...entry, status: refused ? "rejected" : "unknown" });
+        throw new Error(refused ? walletError(e) : "walletNoResponse");
       }
-      void client
-        .waitForTransactionReceipt({
-          hash: entry.hash!,
-          timeout: 180_000,
-          confirmations: 2,
-          onReplaced: (r) => {
-            entry = {
-              ...entry,
-              hash: r.transaction.hash,
-              nonce: r.transaction.nonce,
-              nonceConfirmed: true,
-              status: "pending",
-            };
-            void write(entry).catch(() => {});
-          },
-        })
-        .then(() => reconcile(urls, entry))
-        .catch(() => {});
-      return entry;
-    } catch (e) {
-      const refused = walletRequestRefused(e);
-      await write({ ...entry, status: refused ? "rejected" : "unknown" });
-      throw new Error(refused ? walletError(e) : "ambiguousTransaction");
-    }
+    })();
+    void response.catch(() => {});
+    onWalletRequest?.();
+    return { response };
   };
-  submitting = true;
-  try {
-    return navigator.locks
-      ? await navigator.locks.request(
-          "megapot-club:submit",
-          { ifAvailable: true },
-          (lock) => {
-            if (!lock) throw new Error("walletPending");
-            return run();
-          },
-        )
-      : Promise.reject(new Error("trackingUnavailable"));
-  } finally {
-    submitting = false;
-  }
+  if (!navigator.locks) throw new Error("trackingUnavailable");
+  // Wallet switches may never answer. They must not hold a cross-flow lock.
+  // The journal mutex still protects durable reservation and final handoff.
+  const task = await awaitWalletResult(run(), signal);
+  return awaitWalletResult(task.response, signal);
 }
 
 export function downloadJSON(name: string, value: unknown) {

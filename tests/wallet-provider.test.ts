@@ -235,7 +235,7 @@ test("a stale switch cannot redirect its follow-up to the newly selected wallet"
 test("wrapped wallet rejection and already-pending errors preserve recovery semantics", () => {
   assert.equal(walletError({ cause: { code: 4001 } }), "rejected");
   assert.equal(walletError({ name: "UserRejectedRequestError" }), "rejected");
-  assert.equal(walletError({ cause: { code: -32002 } }), "walletPending");
+  assert.equal(walletError({ cause: { code: -32002 } }), "walletNoResponse");
   assert.equal(
     walletError(new Error("arbitrary untrusted text")),
     "walletFailed",

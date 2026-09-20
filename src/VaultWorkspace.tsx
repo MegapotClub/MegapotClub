@@ -143,6 +143,7 @@ function VaultReviewCard({
     wallet = useWallet(),
     revision = useRef(wallet.revision);
   const [busy, setBusy] = useState(false),
+    [waiting, setWaiting] = useState(false),
     [error, setError] = useState("");
   const approval =
     review.call.operation === "approve"
@@ -284,8 +285,12 @@ function VaultReviewCard({
       <div className="wallet-buttons">
         <button
           className="button button-primary"
-          disabled={busy || !matches || review.state.contractWallet}
+          disabled={
+            (busy && !waiting) || !matches || review.state.contractWallet
+          }
           onClick={() => {
+            submission.current?.abort();
+            setWaiting(false);
             setBusy(true);
             setError("");
             const controller = new AbortController();
@@ -295,6 +300,9 @@ function VaultReviewCard({
               review,
               revision.current,
               controller.signal,
+              () => {
+                if (!controller.signal.aborted) setWaiting(true);
+              },
             )
               .then(() => {
                 if (!controller.signal.aborted) onSent();
@@ -303,11 +311,16 @@ function VaultReviewCard({
                 if (!controller.signal.aborted) setError(errorCopy(locale, e));
               })
               .finally(() => {
-                if (!controller.signal.aborted) setBusy(false);
+                if (submission.current === controller) {
+                  setBusy(false);
+                  setWaiting(false);
+                  submission.current = null;
+                }
               });
           }}
         >
-          {busy ? c("working") : c("sign")} <ArrowUpRight size={17} />
+          {waiting ? c("retryWallet") : busy ? c("working") : c("sign")}{" "}
+          <ArrowUpRight size={17} />
         </button>
       </div>
     </section>

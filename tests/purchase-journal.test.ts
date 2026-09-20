@@ -1,6 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { decodeFunctionData, keccak256 } from "viem";
+import { decodeFunctionData, keccak256, type Hex } from "viem";
 import {
   actionCalls,
   jackpotAbi,
@@ -174,4 +174,95 @@ test("a stale recovery write cannot erase a known hash or wallet-selected nonce"
   assert.equal(journals()[0].hash, hash);
   assert.equal(journals()[0].nonce, 17);
   assert.equal(journals()[0].recovery?.nextBlock, "200");
+});
+
+test("distinct late wallet hashes remain tracked after an earlier inferred confirmation", async () => {
+  storage.clear();
+  const original = { ...row(10, "late-purchase"), status: "wallet" as const };
+  await writeJournal(original, true);
+  const inferredHash = `0x${"ab".repeat(32)}` as const;
+  await writeJournal({ ...original, hash: inferredHash, status: "confirmed" });
+  const actualHash = `0x${"cd".repeat(32)}` as const;
+  const actual = await writeJournal(
+    { ...original, hash: actualHash, status: "pending" },
+    false,
+    true,
+  );
+  assert.notEqual(actual.id, original.id);
+  assert.equal(actual.retryOf, original.id);
+  assert.equal(
+    journals().find((e) => e.id === original.id)?.hash,
+    inferredHash,
+  );
+  assert.equal(journals().find((e) => e.id === actual.id)?.hash, actualHash);
+  assert.equal(journals().find((e) => e.id === actual.id)?.status, "pending");
+  await writeJournal({ ...actual, status: "confirmed" });
+  await writeJournal(
+    { ...original, hash: actualHash, status: "pending" },
+    false,
+    true,
+  );
+  assert.equal(journals().length, 2);
+  assert.equal(journals().find((e) => e.id === actual.id)?.status, "confirmed");
+});
+
+test("bounded receipt recovery rotates past stale approvals and visits every eligible attempt", async () => {
+  const { recoveryBatch } = await import("../src/transactions.ts");
+  const approvals = Array.from({ length: 6 }, (_, i) => ({
+    ...row(1, `approve-${i}`),
+    kind: "approve" as const,
+    status: "unknown" as const,
+  }));
+  const purchases = Array.from({ length: 8 }, (_, i) => ({
+    ...row(1, `buy-${i}`),
+    hash: `0x${"ab".repeat(32)}` as Hex,
+  }));
+  const batch = recoveryBatch([...approvals, ...purchases]);
+  assert.deepEqual(
+    batch.map((e) => e.id),
+    purchases.slice(0, 5).map((e) => e.id),
+  );
+  const next = recoveryBatch([...approvals, ...purchases], batch.at(-1)?.id);
+  assert.equal(new Set([...batch, ...next].map((e) => e.id)).size, 8);
+});
+
+test("a late hash cannot adopt another account's resolved journal row", async () => {
+  storage.clear();
+  const original = {
+    ...row(10, "response-collision"),
+    status: "wallet" as const,
+  };
+  const otherHash = `0x${"cd".repeat(32)}` as const;
+  await writeJournal(original, true);
+  await writeJournal({
+    ...original,
+    hash: `0x${"ab".repeat(32)}`,
+    status: "confirmed",
+  });
+  const other = row(10, `wallet-8453-${otherHash.slice(2)}`);
+  const otherOrder = { ...order(10), recipient: inviter };
+  const otherCall = actionCalls(otherOrder, 1_000_000_000n)[0];
+  await writeJournal({
+    ...other,
+    account: inviter,
+    purchase: storedPurchase(otherOrder),
+    data: otherCall.data,
+    hash: otherHash,
+    status: "confirmed",
+  });
+  await assert.rejects(
+    writeJournal(
+      { ...original, hash: otherHash, status: "pending" },
+      false,
+      true,
+    ),
+    /trackingUnavailable/,
+  );
+  assert.equal(
+    journals()
+      .find((e) => e.id === other.id)
+      ?.account.toLowerCase(),
+    inviter,
+  );
+  assert.equal(journals().length, 2);
 });

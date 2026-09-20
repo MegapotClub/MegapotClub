@@ -175,6 +175,7 @@ export function Purchase({
     [review, setReview] = useState<Review | null>(null),
     [reviewRevision, setReviewRevision] = useState(0),
     [busy, setBusy] = useState(false),
+    [waiting, setWaiting] = useState(false),
     [error, setError] = useState("");
   const run = useRef(0),
     request = useRef<AbortController | null>(null),
@@ -191,7 +192,12 @@ export function Purchase({
             e.purchase?.orderId === order.orderId,
         )
       : [];
-  const entry = orderEntries.at(-1) ?? null;
+  const entry =
+    [...orderEntries]
+      .reverse()
+      .find((e) => e.kind === "purchase" && e.status === "confirmed") ??
+    orderEntries.at(-1) ??
+    null;
   const done = entry?.kind === "purchase" && entry.status === "confirmed";
   const reviewValid =
     review !== null &&
@@ -202,15 +208,11 @@ export function Purchase({
     ? "connect"
     : done
       ? "done"
-      : entry && ["wallet", "pending", "unknown"].includes(entry.status)
-        ? "sent"
-        : entry && ["reverted", "replaced"].includes(entry.status)
-          ? "failed"
-          : !reviewValid
-            ? "review"
-            : review!.calls[0].kind === "approve"
-              ? "approve"
-              : "confirm";
+      : !reviewValid
+        ? "review"
+        : review!.calls[0].kind === "approve"
+          ? "approve"
+          : "confirm";
   useEffect(() => {
     if (
       route.checkout &&
@@ -226,6 +228,7 @@ export function Purchase({
     request.current = null;
     busyRef.current = false;
     setBusy(false);
+    setWaiting(false);
     setReview(null);
     setError("");
     setOrder(null);
@@ -247,8 +250,7 @@ export function Purchase({
           e.account.toLowerCase() === wallet.account!.toLowerCase() &&
           e.chainId === 8453 &&
           e.purchase &&
-          (e.purchase.draftKey === draftKey ||
-            ["wallet", "pending", "unknown"].includes(e.status)),
+          e.purchase.draftKey === draftKey,
       );
     const restored = previous?.purchase
       ? restorePurchase(previous.purchase)
@@ -278,6 +280,15 @@ export function Purchase({
   const cleared = useRef(new Set<string>());
   useEffect(() => {
     if (!entry || !accountMatches) return;
+    if (entry.status === "confirmed") {
+      // A receipt can arrive before a silent wallet resolves its own request.
+      // Stop waiting in the view; the independent observer keeps tracking it.
+      run.current++;
+      request.current?.abort();
+      busyRef.current = false;
+      setBusy(false);
+      setWaiting(false);
+    }
     if (
       entry.kind === "purchase" &&
       entry.status === "confirmed" &&
@@ -356,12 +367,13 @@ export function Purchase({
     if (
       !review ||
       !order ||
-      busyRef.current ||
+      (busyRef.current && !waiting) ||
       !["approve", "confirm"].includes(stage)
     )
       return;
     busyRef.current = true;
     setBusy(true);
+    setWaiting(false);
     setError("");
     const controller = new AbortController(),
       seq = ++run.current;
@@ -379,6 +391,9 @@ export function Purchase({
             setReviewRevision(wallet.revision);
           }
         },
+        () => {
+          if (!controller.signal.aborted) setWaiting(true);
+        },
       );
     } catch (e) {
       if (!controller.signal.aborted) setError(errorCopy(locale, e));
@@ -386,13 +401,9 @@ export function Purchase({
       if (seq === run.current) {
         busyRef.current = false;
         setBusy(false);
+        setWaiting(false);
       }
     }
-  };
-  const retry = () => {
-    setReview(null);
-    setError("");
-    setOrder(purchaseAction(draftRef.current, draw, wallet.account!));
   };
   const orderTickets = order?.tickets ?? (choose ? draft.rows : []);
   const orderCount = order ? order.tickets.length : count;
@@ -769,55 +780,51 @@ export function Purchase({
                 </RouteLink>
               </>
             )}
-            {stage === "sent" && entry && (
-              <>
-                <p role="status" className="inline-notice" aria-busy="true">
-                  {entry.status === "wallet"
-                    ? c("wallet")
-                    : entry.status === "unknown"
-                      ? c("ambiguousTransaction")
-                      : entry.kind === "approve"
-                        ? p("approvalPending")
-                        : p("purchaseSubmitted")}
-                </p>
-                {entry.status === "unknown" && (
-                  <RouteLink
-                    to={{ view: "winnings", section: "activity" }}
-                    navigate={navigate}
-                    className="text-button"
-                  >
-                    {c("activity")}
-                    <ArrowRight size={17} />
-                  </RouteLink>
-                )}
-                {entry.hash && (
-                  <a
-                    className="text-button"
-                    href={`${EXPLORER}/tx/${entry.hash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {p("viewTransaction")}
-                    <ExternalLink size={16} />
-                  </a>
-                )}
-              </>
-            )}
-            {stage === "failed" && entry && (
-              <>
+            {!done &&
+              entry &&
+              entry.kind === call?.kind &&
+              ["wallet", "pending", "unknown"].includes(entry.status) &&
+              !(entry.status === "unknown" && error) && (
+                <>
+                  <p role="status" className="inline-notice" aria-busy="true">
+                    {entry.status === "wallet"
+                      ? c("wallet")
+                      : entry.status === "unknown"
+                        ? c("walletNoResponse")
+                        : entry.kind === "approve"
+                          ? p("approvalPending")
+                          : p("purchaseSubmitted")}
+                  </p>
+                  {entry.status === "unknown" && (
+                    <RouteLink
+                      to={{ view: "winnings", section: "activity" }}
+                      navigate={navigate}
+                      className="text-button"
+                    >
+                      {c("activity")}
+                      <ArrowRight size={17} />
+                    </RouteLink>
+                  )}
+                  {entry.hash && (
+                    <a
+                      className="text-button"
+                      href={`${EXPLORER}/tx/${entry.hash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {p("viewTransaction")}
+                      <ExternalLink size={16} />
+                    </a>
+                  )}
+                </>
+              )}
+            {!done &&
+              entry?.kind === call?.kind &&
+              entry?.status === "reverted" && (
                 <p role="alert" className="form-error">
-                  {entry.kind === "purchase" && entry.status === "reverted"
-                    ? p("purchaseReverted")
-                    : c(entry.status)}
+                  {p("purchaseReverted")}
                 </p>
-                <button
-                  className="button button-primary full-width"
-                  onClick={retry}
-                >
-                  {p("tryAgain")}
-                </button>
-              </>
-            )}
+              )}
             {stage === "approve" && (
               <p className="inline-notice">
                 {p("approveHelp", { amount: money(orderTotal, locale, 2) })}
@@ -851,16 +858,29 @@ export function Purchase({
                 ) : (
                   <button
                     className="button button-primary full-width"
-                    disabled={busy || review!.position.contractWallet}
+                    disabled={
+                      (busy && !waiting) || review!.position.contractWallet
+                    }
                     onClick={() => void send()}
                   >
-                    {busy
-                      ? c("working")
-                      : stage === "approve"
-                        ? p("approveAmount", {
-                            amount: money(orderTotal, locale, 2),
-                          })
-                        : `${p("confirmPurchase")} · ${totalText}`}
+                    {waiting ||
+                    (!busy &&
+                      entry?.kind === call?.kind &&
+                      [
+                        "wallet",
+                        "pending",
+                        "unknown",
+                        "reverted",
+                        "replaced",
+                      ].includes(entry?.status ?? ""))
+                      ? p("tryAgain")
+                      : busy
+                        ? c("working")
+                        : stage === "approve"
+                          ? p("approveAmount", {
+                              amount: money(orderTotal, locale, 2),
+                            })
+                          : `${p("confirmPurchase")} · ${totalText}`}
                     <ArrowRight size={19} />
                   </button>
                 )}

@@ -174,7 +174,7 @@ beforeEach(() => {
     endpoint: "https://base.example",
   };
 });
-test("an explicit submission sends once, records the actual wallet-selected nonce and blocks duplicates", async () => {
+test("each explicit submission sends once and retains the actual wallet-selected nonce", async () => {
   const entry = await submitReview(["https://base.example"], quote, revision);
   assert.equal(entry.status, "pending");
   assert.equal(entry.nonce, 9);
@@ -193,11 +193,10 @@ test("an explicit submission sends once, records the actual wallet-selected nonc
       },
     ],
   });
-  await assert.rejects(
-    submitReview(["https://base.example"], quote, revision),
-    /unresolvedTransaction/,
-  );
-  assert.equal(sent.length, 1);
+  const next = await submitReview(["https://base.example"], quote, revision);
+  assert.equal(sent.length, 2);
+  assert.notEqual(next.id, entry.id);
+  assert.equal(journals()[0].hash, hash);
 });
 test("identity change during gas estimation prevents the wallet request", async () => {
   stateChangesDuringGas = true;
@@ -283,7 +282,7 @@ test("claims still reject altered calldata, destinations and cancellation before
   );
   assert.equal(sent.length, 0);
 });
-test("wallet rejection is distinct from an ambiguous response; an ambiguous request is never retried", async () => {
+test("wallet errors remain recorded and only a new explicit action retries", async () => {
   walletFailure = { code: 4001 };
   await assert.rejects(
     submitReview(["https://base.example"], quote, 1),
@@ -293,14 +292,14 @@ test("wallet rejection is distinct from an ambiguous response; an ambiguous requ
   walletFailure = new Error("connection dropped");
   await assert.rejects(
     submitReview(["https://base.example"], quote, 1),
-    /ambiguousTransaction/,
+    /walletNoResponse/,
   );
   assert.equal(journals()[1].status, "unknown");
-  await assert.rejects(
-    submitReview(["https://base.example"], quote, 1),
-    /unresolvedTransaction/,
-  );
   assert.equal(sent.length, 2);
+  walletFailure = null;
+  await submitReview(["https://base.example"], quote, 1);
+  assert.equal(sent.length, 3);
+  assert.equal(journals()[1].status, "unknown");
 });
 test("an explicit wallet hash can reconcile an ambiguous request without requesting another transaction", async () => {
   walletFailure = new Error("connection dropped");
@@ -324,7 +323,7 @@ test("refused wallet requests release only the new reservation and permit a new 
     "pending",
   );
 });
-test("an explicit identical claim retry preserves its ambiguous predecessor; pending hashes cannot retry", async () => {
+test("claim retries preserve prior attempts while fresh calldata checks remain mandatory", async () => {
   quote = {
     ...quote,
     action: { kind: "claim", ids: [1n] },
@@ -333,7 +332,7 @@ test("an explicit identical claim retry preserves its ambiguous predecessor; pen
   walletFailure = new Error("relay unavailable");
   await assert.rejects(
     submitReview(["https://base.example"], quote, 1),
-    /ambiguousClaim/,
+    /walletNoResponse/,
   );
   const first = journals()[0];
   await assert.rejects(
@@ -342,18 +341,16 @@ test("an explicit identical claim retry preserves its ambiguous predecessor; pen
       { ...quote, calls: [{ ...quote.calls[0], data: "0x12345678" }] },
       1,
     ),
-    /unresolvedTransaction/,
+    /reviewChanged/,
   );
   walletFailure = null;
   const second = await submitReview(["https://base.example"], quote, 1);
   assert.equal(second.retryOf, first.id);
   assert.equal(journals()[0].status, "unknown");
   assert.equal(journals()[1].status, "pending");
-  await assert.rejects(
-    submitReview(["https://base.example"], quote, 1),
-    /unresolvedTransaction/,
-  );
-  assert.equal(sent.length, 2);
+  await submitReview(["https://base.example"], quote, 1);
+  assert.equal(sent.length, 3);
+  assert.equal(journals()[1].hash, hash);
 });
 
 test("claim recovery groups thirty ticket events into one candidate and tolerates device-clock skew", async () => {
@@ -368,7 +365,7 @@ test("claim recovery groups thirty ticket events into one candidate and tolerate
   walletFailure = new Error("response lost");
   await assert.rejects(
     submitReview(["https://base.example"], quote, 1),
-    /ambiguousClaim/,
+    /walletNoResponse/,
   );
   const first = journals()[0];
   await writeJournal({
@@ -396,7 +393,7 @@ test("claim recovery groups thirty ticket events into one candidate and tolerate
   assert.equal(retry.resolvedBy, hash);
   assert.equal(sent.length, 1);
 });
-test("a hash discovered during claim retry preparation prevents the second wallet handoff", async () => {
+test("a hash discovered during preparation stays tracked without blocking an explicit retry", async () => {
   quote = {
     ...quote,
     action: { kind: "claim", ids: [1n] },
@@ -405,17 +402,14 @@ test("a hash discovered during claim retry preparation prevents the second walle
   walletFailure = new Error("response lost");
   await assert.rejects(
     submitReview(["https://base.example"], quote, 1),
-    /ambiguousClaim/,
+    /walletNoResponse/,
   );
   discoveredDuringTarget = true;
   walletFailure = null;
-  await assert.rejects(
-    submitReview(["https://base.example"], quote, 1),
-    /claimAlreadySent/,
-  );
-  assert.equal(sent.length, 1);
+  await submitReview(["https://base.example"], quote, 1);
+  assert.equal(sent.length, 2);
   assert.equal(journals()[0].hash, hash);
-  assert.equal(journals()[1].status, "rejected");
+  assert.equal(journals()[1].status, "pending");
 });
 
 test("a synchronous wallet hash remains a dispatched transaction", async (t) => {
@@ -437,7 +431,7 @@ test("a retry hash arriving after the claim was fulfilled resumes real receipt t
   walletFailure = new Error("response lost");
   await assert.rejects(
     submitReview(["https://base.example"], quote, 1),
-    /ambiguousClaim/,
+    /walletNoResponse/,
   );
   const first = journals()[0];
   const retry = {
@@ -450,11 +444,133 @@ test("a retry hash arriving after the claim was fulfilled resumes real receipt t
   eventCount = 1;
   await reconcile(["https://base.example"], first, hash);
   assert.equal(journals().find((j) => j.id === retry.id)?.status, "superseded");
+  await writeJournal({ ...retry, hash, status: "confirmed" });
+  assert.equal(journals().find((j) => j.id === retry.id)?.status, "superseded");
   const lateHash = `0x${"cd".repeat(32)}` as const;
-  await writeJournal({ ...retry, hash: lateHash, status: "pending" });
+  await writeJournal(
+    { ...retry, hash: lateHash, status: "pending" },
+    false,
+    true,
+  );
   assert.equal(journals().find((j) => j.id === retry.id)?.status, "pending");
   assert.equal(journals().find((j) => j.id === retry.id)?.hash, lateHash);
   await writeJournal({ ...retry, status: "superseded", resolvedBy: hash });
   assert.equal(journals().find((j) => j.id === retry.id)?.hash, lateHash);
   assert.equal(journals().find((j) => j.id === retry.id)?.status, "pending");
+});
+
+test("a silent approval does not hold the prepare lock, block a claim or lose a late hash", async (t) => {
+  let complete!: (hash: string) => void;
+  let dispatched!: () => void;
+  const started = new Promise<void>((resolve) => {
+    dispatched = resolve;
+  });
+  const silent = new Promise<string>((resolve) => {
+    complete = resolve;
+  });
+  t.mock.method(provider, "request", async (request: unknown) => {
+    sent.push(request);
+    return sent.length === 1 ? silent : hash;
+  });
+  quote = {
+    ...quote,
+    calls: [{ ...quote.calls[0], kind: "approve" }],
+  };
+  const controller = new AbortController();
+  const first = submitReview(
+    ["https://base.example"],
+    quote,
+    1,
+    controller.signal,
+    undefined,
+    dispatched,
+  );
+  const abandoned = assert.rejects(first, /reviewCancelled/);
+  await started;
+  controller.abort();
+  await abandoned;
+  assert.equal(journals()[0].status, "wallet");
+  quote = {
+    ...quote,
+    action: { kind: "claim", ids: [1n] },
+    calls: [{ ...quote.calls[0], kind: "claim" }],
+  };
+  const claim = await submitReview(["https://base.example"], quote, 1);
+  assert.equal(claim.status, "pending");
+  assert.equal(sent.length, 2);
+  const lateHash = `0x${"cd".repeat(32)}`;
+  complete(lateHash);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(journals()[0].hash, lateHash);
+  assert.equal(journals()[0].status, "pending");
+  assert.equal(journals()[1].hash, hash);
+  assert.equal(sent.length, 2);
+});
+
+test("two deliberate actions can reach the wallet while the first response is outstanding", async (t) => {
+  let complete!: (hash: string) => void;
+  let dispatched!: () => void;
+  const started = new Promise<void>((resolve) => {
+    dispatched = resolve;
+  });
+  const silent = new Promise<string>((resolve) => {
+    complete = resolve;
+  });
+  t.mock.method(provider, "request", async (request: unknown) => {
+    sent.push(request);
+    return sent.length === 1 ? silent : hash;
+  });
+  const first = submitReview(
+    ["https://base.example"],
+    quote,
+    1,
+    undefined,
+    undefined,
+    dispatched,
+  );
+  await started;
+  const second = await submitReview(["https://base.example"], quote, 1);
+  assert.equal(second.status, "pending");
+  assert.equal(sent.length, 2);
+  complete(hash);
+  await first;
+  assert.equal(journals().length, 2);
+  assert.equal(sent.length, 2);
+});
+
+test("cancelling a slow preflight never opens a later wallet handoff", async (t) => {
+  let release!: (gas: bigint) => void;
+  let started!: () => void;
+  const began = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  t.mock.method(client, "estimateGas", async () => {
+    started();
+    return new Promise<bigint>((resolve) => {
+      release = resolve;
+    });
+  });
+  const controller = new AbortController();
+  let walletRequested = false;
+  const cancelled = assert.rejects(
+    submitReview(
+      ["https://base.example"],
+      quote,
+      1,
+      controller.signal,
+      undefined,
+      () => {
+        walletRequested = true;
+      },
+    ),
+    /reviewCancelled/,
+  );
+  await began;
+  controller.abort();
+  await cancelled;
+  release(30_000n);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(walletRequested, false);
+  assert.equal(sent.length, 0);
+  assert.equal(journals().length, 0);
 });
