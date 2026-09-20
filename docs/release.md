@@ -1,6 +1,6 @@
 # Static release
 
-The canonical origin is `https://megapotclub.eth.limo`. Canonical, Open Graph, X card, robots and sitemap URLs are rendered into every HTML entrypoint; crawlers do not need JavaScript. `public/og.png` is the neutral Club social card. Fragment routes share this site card because fragments are not sent to a web server. No per-wallet or per-win metadata is generated on the server. Win images are generated locally and shared as actual attachments; their QR preserves referral attribution.
+The canonical origin is `https://megapotclub.eth.limo`. Canonical, Open Graph, X card, robots and sitemap URLs are rendered into every HTML entrypoint; crawlers do not need JavaScript. `public/og.png` is the neutral Club social card. Fragment routes share this site card because fragments are not sent to a web server. No per-wallet or per-win metadata is generated on the server. Win images are generated locally and shared as actual attachments; their QR preserves referral attribution and contains the Club icon. Captions identify the daily prize pool, separately from the jackpot-tier referral example.
 
 From a clean, committed checkout with pinned Node/npm:
 

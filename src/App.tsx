@@ -1,4 +1,4 @@
-import { WinShareJackpot } from "./winShareContext.ts";
+import { WinSharePrizePool } from "./winShareContext.ts";
 import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
@@ -25,7 +25,12 @@ import {
 import type { FormEvent } from "react";
 import type { Locale, Messages } from "./i18n.ts";
 import { LANGUAGES } from "./i18n.ts";
-import { SUPPORT_DM_RECIPIENT, DEFAULT_RPC_URLS, APP_NAME } from "./config.ts";
+import {
+  SUPPORT_URL,
+  CLUB_X_PROFILE,
+  DEFAULT_RPC_URLS,
+  APP_NAME,
+} from "./config.ts";
 import { money, parseRpcUrls } from "./model.ts";
 import type { Draw } from "./model.ts";
 import { useSnapshot } from "./useSnapshot.ts";
@@ -262,7 +267,9 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
   };
 
   return (
-    <WinShareJackpot value={live && !stale ? snapshot.current.prizePool : null}>
+    <WinSharePrizePool
+      value={live && !stale ? snapshot.current.prizePool : null}
+    >
       <SkipLink label={m.skip} target={mainRef} />
       <header className="site-header">
         <a
@@ -418,8 +425,18 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
           >
             {m.about}
           </a>
-          <a href="https://megapot.io" target="_blank" rel="noreferrer">
-            Megapot ↗
+          <a
+            href={CLUB_X_PROFILE}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={p("xProfile")}
+          >
+            <span className="x-mark" aria-hidden="true">
+              𝕏
+            </span>
+          </a>
+          <a href={SUPPORT_URL} target="_blank" rel="noreferrer">
+            {p("support")}
           </a>
           <label className="language-control">
             <Globe2 size={16} />
@@ -554,18 +571,16 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
                 <ExternalLink size={16} />
               </a>
               <div className="profile-footer">
-                {SUPPORT_DM_RECIPIENT ? (
-                  <a
-                    className="brand-support"
-                    href={`https://x.com/messages/compose?recipient_id=${SUPPORT_DM_RECIPIENT}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Megapot Club ${p("support")}`}
-                  >
-                    <Brand compact />
-                    <span>{p("support")}</span>
-                  </a>
-                ) : null}
+                <a
+                  className="brand-support"
+                  href={SUPPORT_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Megapot Club ${p("support")}`}
+                >
+                  <Brand compact />
+                  <span>{p("support")}</span>
+                </a>
               </div>
             </div>
           )}
@@ -690,6 +705,6 @@ export default function App({ locale, messages: m, rootPath }: AppProps) {
           {toast}
         </div>
       )}
-    </WinShareJackpot>
+    </WinSharePrizePool>
   );
 }

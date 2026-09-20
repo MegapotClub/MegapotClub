@@ -161,7 +161,6 @@
   "getPaidDailyDetail": "Earn {percent} of ticket purchases made through your link. Rewards are available to claim as friends play.",
   "winIfTheyWin": "Win if they win",
   "winIfTheyWinDetail": "Earn {percent} of their gross prizes when they claim. A jackpot win today could earn you {amount}.",
-  "winShareJackpot": "Play the {jackpot} daily jackpot now:",
   "copyImage": "Copy Image",
   "shareImage": "Share Image",
   "imageCopied": "Image copied. Paste it into your X post.",
@@ -174,5 +173,7 @@
   "copyPostText": "Copy post text",
   "postTextCopied": "Post text copied.",
   "selectPostText": "Select and copy the post text above.",
-  "openX": "Open X"
+  "openX": "Open X",
+  "winSharePrizePool": "Play the {prizePool} daily prize pool now:",
+  "xProfile": "Megapot Club on X"
 }

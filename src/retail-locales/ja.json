@@ -161,7 +161,6 @@
   "getPaidDailyDetail": "リンク経由のチケット購入額の{percent}を獲得。友達が購入すると報酬を請求できます。",
   "winIfTheyWin": "友達の当選であなたにも報酬",
   "winIfTheyWinDetail": "友達が賞金を請求すると総賞金の{percent}を獲得。本日のジャックポット当選なら報酬は{amount}になる可能性があります。",
-  "winShareJackpot": "毎日の{jackpot}ジャックポットに今すぐ挑戦：",
   "copyImage": "画像をコピー",
   "shareImage": "画像を共有",
   "imageCopied": "画像をコピーしました。Xの投稿に貼り付けてください。",
@@ -174,5 +173,7 @@
   "copyPostText": "投稿文をコピー",
   "postTextCopied": "投稿文をコピーしました。",
   "selectPostText": "上の投稿文を選択してコピーしてください。",
-  "openX": "Xを開く"
+  "openX": "Xを開く",
+  "winSharePrizePool": "毎日の{prizePool}の賞金プールに今すぐ挑戦：",
+  "xProfile": "X の Megapot Club"
 }

@@ -1,18 +1,27 @@
 import decodeQR from "qr/decode.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   invitationUrl,
   winAmount,
   winCardSvg,
   xWinUrl,
-  shareJackpot,
+  sharePrizePool,
   winQr,
 } from "../src/winShare.ts";
 import { isFreeTicketTier } from "../src/prizeDisplay.ts";
 import { groupClaimedWins } from "../src/claimedWins.ts";
 import type { IndexedWin } from "../src/megapotApi.ts";
 const account = "0x1111111111111111111111111111111111111111";
+const wordmark = readFileSync(
+  new URL("../brand/svg/megapot-club-logo-on-dark.svg", import.meta.url),
+  "utf8",
+);
+const clubIcon = readFileSync(
+  new URL("../brand/svg/megapot-club-icon-color.svg", import.meta.url),
+  "utf8",
+);
 test("win sharing uses the verified amount and a canonical inviter link", () => {
   const win = { amount: "3883000000", account };
   assert.equal(winAmount(win, "en"), "$3,883.00");
@@ -30,6 +39,8 @@ test("share image preserves exact values and escapes external text", () => {
     { amount: "213017160976", account },
     "en",
     '<script>&"win"',
+    wordmark,
+    clubIcon,
   );
   assert.match(svg, /width="1200" height="630"/);
   assert.match(svg, /\$213,017.16/);
@@ -66,7 +77,7 @@ test("free-ticket grouping follows prize tiers, not a one-dollar amount heuristi
   assert.equal(group.wins.length, 3);
 });
 
-test("the QR carries the exact inviter path and current jackpots use conservative display amounts", () => {
+test("the branded QR carries the exact inviter path and pool captions use conservative amounts", () => {
   const matrix = winQr({ amount: "3020000", account }),
     scale = 5,
     width = matrix.length * scale;
@@ -74,15 +85,32 @@ test("the QR carries the exact inviter path and current jackpots use conservativ
   for (let y = 0; y < width; y++)
     for (let x = 0; x < width; x++) {
       const offset = (y * width + x) * 4,
-        value = matrix[Math.floor(y / scale)][Math.floor(x / scale)] ? 0 : 255;
+        // Erase the full logo backing: decoding must tolerate its worst-case damage.
+        mx = Math.floor(x / scale),
+        my = Math.floor(y / scale),
+        covered =
+          Math.abs(mx + 0.5 - matrix.length / 2) < 5 &&
+          Math.abs(my + 0.5 - matrix.length / 2) < 5,
+        value = !covered && matrix[my][mx] ? 0 : 255;
       data.set([value, value, value, 255], offset);
     }
   assert.equal(
     decodeQR({ width, height: width, data }),
     invitationUrl(account),
   );
-  assert.equal(shareJackpot("220567999999", "en"), "$220,000+");
-  assert.equal(shareJackpot("1", "en"), null);
+  assert.equal(sharePrizePool("220567999999", "en"), "$220,000+");
+  assert.equal(sharePrizePool("1133024667046", "en"), "$1,133,000+");
+  const copy = JSON.parse(
+    readFileSync(
+      new URL("../src/retail-locales/en.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(
+    `${copy.winShareText.replace("{amount}", "$3.02")} ${copy.winSharePrizePool.replace("{prizePool}", "$1,133,000+")}`,
+    "I won $3.02 on Megapot Club! Play the $1,133,000+ daily prize pool now:",
+  );
+  assert.equal(sharePrizePool("1", "en"), null);
   for (const raw of [null, "0", "-1", "1.1", (2n ** 256n).toString()])
-    assert.equal(shareJackpot(raw, "en"), null);
+    assert.equal(sharePrizePool(raw, "en"), null);
 });

@@ -161,7 +161,6 @@
   "getPaidDailyDetail": "내 링크를 통한 티켓 구매액의 {percent}를 받습니다. 친구가 구매하면 보상을 청구할 수 있습니다.",
   "winIfTheyWin": "친구가 당첨되면 함께 받기",
   "winIfTheyWinDetail": "친구가 상금을 청구하면 총상금의 {percent}를 받습니다. 오늘 잭팟에 당첨되면 {amount}를 받을 수 있습니다.",
-  "winShareJackpot": "매일 {jackpot} 잭팟에 지금 도전하세요:",
   "copyImage": "이미지 복사",
   "shareImage": "이미지 공유",
   "imageCopied": "이미지를 복사했습니다. X 게시물에 붙여 넣으세요.",
@@ -174,5 +173,7 @@
   "copyPostText": "게시물 텍스트 복사",
   "postTextCopied": "게시물 텍스트를 복사했습니다.",
   "selectPostText": "위 게시물 텍스트를 선택하여 복사하세요.",
-  "openX": "X 열기"
+  "openX": "X 열기",
+  "winSharePrizePool": "매일 {prizePool} 상금 풀에 지금 도전하세요:",
+  "xProfile": "X의 Megapot Club"
 }

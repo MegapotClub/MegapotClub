@@ -4,30 +4,31 @@ import { Modal } from "./Modal.tsx";
 import { playCopy } from "./playCopy.ts";
 import {
   invitationUrl,
-  shareJackpot,
+  sharePrizePool,
   winAmount,
   winCardSvg,
   xWinUrl,
   type ShareWin,
 } from "./winShare.ts";
-import { WinShareJackpot } from "./winShareContext.ts";
+import { WinSharePrizePool } from "./winShareContext.ts";
 import wordmark from "../brand/svg/megapot-club-logo-on-dark.svg?raw";
+import clubIcon from "../brand/svg/megapot-club-icon-color.svg?raw";
 import type { Locale } from "./i18n.ts";
 
 /** Prepare the actual attachment before a click so native sharing retains user activation.
  * Target apps control caption handling; opening sharing never means a post was published. */
 export function WinShare({ win, locale }: { win: ShareWin; locale: Locale }) {
   const p = playCopy(locale),
-    jackpot = shareJackpot(useContext(WinShareJackpot), locale),
+    prizePool = sharePrizePool(useContext(WinSharePrizePool), locale),
     [open, setOpen] = useState(false),
     [image, setImage] = useState(""),
     [file, setFile] = useState<File | null>(null),
     [error, setError] = useState(false),
     [notice, setNotice] = useState(""),
     [sharing, setSharing] = useState(false);
-  const caption = `${p("winShareText", { amount: winAmount(win, locale) })}${jackpot ? ` ${p("winShareJackpot", { jackpot })}` : ""} ${invitationUrl(win.account)}`;
+  const caption = `${p("winShareText", { amount: winAmount(win, locale) })}${prizePool ? ` ${p("winSharePrizePool", { prizePool })}` : ""} ${invitationUrl(win.account)}`;
   const svg = useMemo(
-    () => winCardSvg(win, locale, p("youWon"), wordmark),
+    () => winCardSvg(win, locale, p("youWon"), wordmark, clubIcon),
     [win.amount, win.account, win.date, locale],
   );
   useEffect(() => {

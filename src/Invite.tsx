@@ -190,31 +190,37 @@ export function Invite({
         </p>
       )}
       <div className="invite-steps">
-        <article>
+        <article className="invite-step">
           <Gift size={25} />
-          <h3>{p("giftFriends")}</h3>
-          <p>{p("giftFriendsDetail")}</p>
+          <div>
+            <h3>{p("giftFriends")}</h3>
+            <p>{p("giftFriendsDetail")}</p>
+          </div>
         </article>
         {terms.data && (
           <>
-            <article>
+            <article className="invite-step">
               <Coins size={25} />
-              <h3>{p("getPaidDaily")}</h3>
-              <p>
-                {p("getPaidDailyDetail", {
-                  percent: percent(terms.data.purchaseFee),
-                })}
-              </p>
+              <div>
+                <h3>{p("getPaidDaily")}</h3>
+                <p>
+                  {p("getPaidDailyDetail", {
+                    percent: percent(terms.data.purchaseFee),
+                  })}
+                </p>
+              </div>
             </article>
-            <article>
+            <article className="invite-step">
               <Trophy size={25} />
-              <h3>{p("winIfTheyWin")}</h3>
-              <p>
-                {p("winIfTheyWinDetail", {
-                  percent: percent(terms.data.winShare),
-                  amount: `$${money(((terms.data.prizePool * terms.data.winShare) / 10n ** 18n).toString(), locale, 0)}`,
-                })}
-              </p>
+              <div>
+                <h3>{p("winIfTheyWin")}</h3>
+                <p>
+                  {p("winIfTheyWinDetail", {
+                    percent: percent(terms.data.winShare),
+                    amount: `$${money(terms.data.jackpotReferralReward.toString(), locale, 0)}`,
+                  })}
+                </p>
+              </div>
             </article>
           </>
         )}

@@ -4,7 +4,7 @@ All browser configuration is public. The static application has no server-held s
 
 | Service | Use | Configuration / credentials |
 | --- | --- | --- |
-| Base RPC | Public observations, wallet preflight, receipts | `src/config.ts`, `public/config.json`; editable browser settings. Public HTTPS endpoints by default. Never embed a privileged credential. |
+| Base RPC | Public observations, wallet preflight, receipts | `src/config.ts`, `public/config.json`; editable browser settings. `https://mainnet.base.org/` first, with PublicNode as a bounded fallback; automatic latency ranking is disabled. Never embed a privileged credential. |
 | Ethereum RPC | ENS and optional Ethereum vault reads | `src/walletConfig.ts`, vault settings. Public RPC defaults. |
 | Megapot Data API | Recent wins, result totals, paginated claimed history | `src/megapotApi.ts`; anonymous HTTPS reads, no secret. Display enrichment only. |
 | Coinbase WalletLink | Optional Coinbase EOA phone pairing | Library connector; HTTPS/WSS relay. No project key configured. Requires HTTPS in production. |

@@ -112,6 +112,23 @@
           } catch (error) {
             qr = `Decode failed: ${error.message}`;
           }
+          const compressed = document.createElement("canvas");
+          compressed.width = 600;
+          compressed.height = 315;
+          const ctx = compressed.getContext("2d");
+          ctx.drawImage(canvas, 0, 0, 600, 315);
+          const jpeg = await new Promise((resolve) =>
+            compressed.toBlob(resolve, "image/jpeg", 0.82),
+          );
+          const downsample = await createImageBitmap(jpeg);
+          ctx.drawImage(downsample, 0, 0);
+          downsample.close();
+          let compressedQr;
+          try {
+            compressedQr = decodeQR(ctx.getImageData(0, 0, 600, 315));
+          } catch (error) {
+            compressedQr = `Decode failed: ${error.message}`;
+          }
           document.getElementById("share-audit").textContent = JSON.stringify({
             adapter: true,
             action,
@@ -121,6 +138,7 @@
             height: canvas.height,
             text,
             qr,
+            compressedQr,
           });
         };
         if (!window.ClipboardItem)

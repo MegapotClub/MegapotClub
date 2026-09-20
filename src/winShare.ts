@@ -30,7 +30,7 @@ const xml = (s: string) =>
         "'": "&apos;",
       })[c]!,
   );
-export function shareJackpot(
+export function sharePrizePool(
   raw: string | null,
   locale: Locale,
 ): string | null {
@@ -42,7 +42,7 @@ export function shareJackpot(
 }
 export function winQr(win: ShareWin) {
   return encodeQR(invitationUrl(win.account), "raw", {
-    ecc: "quartile",
+    ecc: "high",
     border: 4,
   });
 }
@@ -50,7 +50,8 @@ export function winCardSvg(
   win: ShareWin,
   locale: Locale,
   headline: string,
-  wordmark = "",
+  wordmark: string,
+  clubIcon: string,
 ) {
   const amount = winAmount(win, locale);
   const date =
@@ -63,7 +64,7 @@ export function winCardSvg(
   const size = Math.min(128, 675 / (amount.length * 0.62));
   // Integer-sized modules and a four-module quiet zone survive image compression.
   const matrix = winQr(win),
-    module = Math.floor(312 / matrix.length),
+    module = Math.floor(354 / matrix.length),
     side = module * matrix.length;
   const qr = matrix
     .flatMap((row, y) =>
@@ -80,6 +81,11 @@ export function winCardSvg(
     /<svg[^>]*>/,
     '<svg x="42" y="20" width="460" height="131" viewBox="0 0 450 128">',
   );
+  const center = 10 * module;
+  const icon = clubIcon.replace(
+    /<svg[^>]*>/,
+    `<svg x="${975 - 4 * module}" y="${348 - 4 * module}" width="${8 * module}" height="${8 * module}" viewBox="0 0 64 64">`,
+  );
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
     <rect width="1200" height="630" fill="#244BE9"/>
     <circle cx="1150" cy="-130" r="270" fill="none" stroke="#4163ef" stroke-width="52"/>
@@ -93,5 +99,7 @@ export function winCardSvg(
     </g>
     <rect x="798" y="171" width="354" height="354" rx="24" fill="#fff"/>
     <g transform="translate(${798 + (354 - side) / 2} ${171 + (354 - side) / 2})" fill="#19212C" shape-rendering="crispEdges">${qr}</g>
+    <rect x="${975 - center / 2}" y="${348 - center / 2}" width="${center}" height="${center}" rx="${module}" fill="#fff"/>
+    ${icon}
   </svg>`;
 }

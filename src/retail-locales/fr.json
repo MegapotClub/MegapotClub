@@ -161,7 +161,6 @@
   "getPaidDailyDetail": "Gagnez {percent} des achats de tickets via votre lien. Les récompenses sont disponibles quand vos amis jouent.",
   "winIfTheyWin": "Gagnez quand ils gagnent",
   "winIfTheyWinDetail": "Gagnez {percent} de leurs gains bruts quand ils les réclament. Un jackpot aujourd’hui pourrait vous rapporter {amount}.",
-  "winShareJackpot": "Tentez le jackpot quotidien de {jackpot} :",
   "copyImage": "Copier l’image",
   "shareImage": "Partager l’image",
   "imageCopied": "Image copiée. Collez-la dans votre publication sur X.",
@@ -174,5 +173,7 @@
   "copyPostText": "Copier le texte",
   "postTextCopied": "Texte copié.",
   "selectPostText": "Sélectionnez et copiez le texte ci-dessus.",
-  "openX": "Ouvrir X"
+  "openX": "Ouvrir X",
+  "winSharePrizePool": "Jouez pour la cagnotte quotidienne de {prizePool} :",
+  "xProfile": "Megapot Club sur X"
 }

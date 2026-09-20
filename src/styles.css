@@ -6321,7 +6321,7 @@ input[type="range"] {
   padding: 18px;
 }
 .invite-step > svg {
-  color: var(--blue);
+  color: var(--accent-ink);
   flex-shrink: 0;
   margin-top: 3px;
 }
@@ -6398,13 +6398,6 @@ input[type="range"] {
   display: grid;
   justify-items: center;
   gap: 12px;
-}
-.invite-steps h3 {
-  margin: 12px 0 8px;
-}
-.invite-steps p {
-  margin-bottom: 0;
-  color: var(--muted);
 }
 
 /* Claim review belongs to the dialog, with no second page-like frame. */

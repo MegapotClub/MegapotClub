@@ -161,7 +161,6 @@
   "getPaidDailyDetail": "赚取通过你的链接购买彩票金额的 {percent}。好友购买后即可领取奖励。",
   "winIfTheyWin": "好友中奖，你也获奖",
   "winIfTheyWinDetail": "好友领取奖金时，你可获得总奖金的 {percent}。若今天中得头奖，你可能获得 {amount}。",
-  "winShareJackpot": "立即参与每日 {jackpot} 大奖：",
   "copyImage": "复制图片",
   "shareImage": "分享图片",
   "imageCopied": "图片已复制。请粘贴到 X 帖子中。",
@@ -174,5 +173,7 @@
   "copyPostText": "复制帖子文字",
   "postTextCopied": "帖子文字已复制。",
   "selectPostText": "请选择并复制上方帖子文字。",
-  "openX": "打开 X"
+  "openX": "打开 X",
+  "winSharePrizePool": "立即参与每日 {prizePool} 奖池：",
+  "xProfile": "Megapot Club 的 X 主页"
 }
