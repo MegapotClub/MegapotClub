@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { playCopy } from "./playCopy.ts";
 import { DrawTime } from "./drawTime.tsx";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import type { Locale } from "./i18n.ts";
 import { clubCopy, errorCopy } from "./clubCopy.ts";
@@ -56,12 +56,21 @@ export function TransactionActivity({
   urls,
   account,
   chainId = 8453,
+  focus = false,
 }: {
   locale: Locale;
   urls: string[];
   account?: string;
   chainId?: VaultChain;
+  focus?: boolean;
 }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focus) {
+      heading.current?.focus({ preventScroll: true });
+      heading.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+  }, [focus]);
   const items = useTransactions()
     .filter(
       (x) =>
@@ -93,7 +102,9 @@ export function TransactionActivity({
   });
   return (
     <section className="action-card">
-      <h2>{c("activity")}</h2>
+      <h2 ref={heading} tabIndex={-1}>
+        {c("activity")}
+      </h2>
       {!journalStorageAvailable() && (
         <p className="form-error">{c("storageFailed")}</p>
       )}

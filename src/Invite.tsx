@@ -94,12 +94,19 @@ export function Invite({
             <button
               className="icon-button"
               aria-label={p("copy")}
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(link)
-                  .then(() => setNotice(p("copied")))
-                  .catch(() => setNotice(p("shareFailed")))
-              }
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(link);
+                  setNotice(p("copied"));
+                } catch {
+                  const input = document.getElementById("invite-link");
+                  if (input instanceof HTMLInputElement) {
+                    input.focus();
+                    input.select();
+                  }
+                  setNotice(p("shareFailed"));
+                }
+              }}
             >
               <Copy size={20} />
             </button>

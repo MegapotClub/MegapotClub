@@ -18,12 +18,18 @@ export function Modal({
   backLabel?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
+    closeButton = useRef<HTMLButtonElement>(null),
     titleId = useId();
   useEffect(() => {
     const element = dialog.current;
     element?.showModal();
     return () => element?.close();
   }, []);
+  // A nested screen can replace the focused control without remounting the dialog.
+  // Put focus back inside its new contents for keyboard and screen-reader navigation.
+  useEffect(() => {
+    closeButton.current?.focus({ preventScroll: true });
+  }, [title]);
   return (
     <dialog
       ref={dialog}
@@ -57,6 +63,7 @@ export function Modal({
         )}
         <h2 id={titleId}>{title}</h2>
         <button
+          ref={closeButton}
           autoFocus
           className="icon-button"
           onClick={onClose}

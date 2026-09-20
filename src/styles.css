@@ -1207,6 +1207,7 @@ textarea {
 }
 .modal-body {
   padding: 24px;
+  isolation: isolate;
 }
 .modal-body p {
   font-size: 1rem;

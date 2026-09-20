@@ -153,9 +153,21 @@ export function PlayerBalance({
   }, [wallet.account, wallet.revision, urls]);
   useEffect(() => {
     if (!wallet.account || !data || stale || !data.pricingComplete) return;
+    const accountKey = wallet.account.toLowerCase();
+    if (seenSession.current.has(accountKey)) return;
+    seenSession.current.add(accountKey);
+    // Automatic refresh must not reopen celebrations over a claim in progress.
+    // Offer at most one reveal per account visit, before any explicit prize action.
+    if (
+      busy ||
+      review ||
+      selected.length ||
+      claimId ||
+      route.ticket ||
+      route.section
+    )
+      return;
     const win = prizes.find((t) => {
-      const key = `${wallet.account}:${t.draw.id}`;
-      if (seenSession.current.has(key)) return false;
       try {
         return !localStorage.getItem(
           `megapot-club:seen-win:${wallet.account!.toLowerCase()}:${t.draw.id}`,
@@ -165,13 +177,22 @@ export function PlayerBalance({
       }
     });
     if (win) {
-      seenSession.current.add(`${wallet.account}:${win.draw.id}`);
       setReveal({
         account: wallet.account,
         prizes: prizes.filter((t) => t.draw.id === win.draw.id),
       });
     }
-  }, [data, wallet.account, stale]);
+  }, [
+    data,
+    wallet.account,
+    stale,
+    busy,
+    review,
+    selected.length,
+    claimId,
+    route.ticket,
+    route.section,
+  ]);
   useEffect(() => {
     setSelected((previous) =>
       previous.filter((id) => prizes.some((p) => p.ticketId.toString() === id)),
@@ -484,6 +505,7 @@ export function PlayerBalance({
           locale={locale}
           urls={urls}
           account={wallet.account}
+          focus={route.section === "activity"}
         />
       )}
       {reveal && wallet.account && reveal.account === wallet.account && (
