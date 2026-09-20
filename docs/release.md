@@ -19,6 +19,8 @@ npm run verify:deployment -- --url https://your-gateway.example/ --artifact .rel
 
 This checks served bytes against the local artifact without invoking chain APIs. Also inspect desktop/mobile routes, refresh, locale subdirectories, wallet behavior and crawler-visible metadata on the final gateway. Asset verification does not prove chain availability or funded wallet execution.
 
+Measure RPC traffic in the exported application, including a restored transaction journal, not only isolated read functions. During `npm run dev`, `/dist/?traffic=1#draw` instruments the production bundle; adding `&history=synthetic` seeds only fixture journal entries. Expect seven Base requests and one batched Ethereum ENS request on a healthy disconnected startup, no fallback/receipt requests, and no further RPC burst before the normal one-minute refresh (faster near settlement). Verify connected receipt recovery separately. The diagnostic script and middleware are development-only and excluded from the release.
+
 For ENS/IPFS, pin the accepted directory, record the resulting CID alongside its commit and archive hash, and verify it through an IPFS gateway before changing the ENS content record. Configure `megapotclub.eth` to that content record. Actual eth.limo resolution and X's remote crawler cannot be verified before deployment; test both afterward. See [eth.limo documentation](https://eth-limo.gitbook.io/documentation).
 
 For rollback, retain the previous pinned CID and artifact. Restore the prior ENS content record, then repeat served-byte and browser checks; gateway/crawler caches may delay the visible change. A static site rollback does not reverse any blockchain transaction or custody deployment.

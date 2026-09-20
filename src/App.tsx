@@ -115,13 +115,13 @@ function Balls({
 }
 
 export default function App({ locale, messages: m, rootPath }: AppProps) {
-  const { snapshot, urls, setUrls, error, live } = useSnapshot(rootPath);
+  const { snapshot, urls, setUrls, error, live, ready } = useSnapshot(rootPath);
   const { route, navigate: changeRoute } = useRoute();
   const view = route.view;
   const p = playCopy(locale);
   const wallet = useWallet();
   useReceiptRefresh();
-  useTransactionRecovery(urls);
+  useTransactionRecovery(urls, wallet.account, ready);
   const viewLabel = (v: View) =>
     v === "draw"
       ? p("home")

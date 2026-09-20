@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { extname, resolve, sep } from "node:path";
 import type { Plugin } from "vite";
 
@@ -46,6 +46,16 @@ export function exportPreview(): Plugin {
             "Cache-Control": "no-store",
           });
           if (request.method === "HEAD") response.end();
+          else if (
+            extname(file) === ".html" &&
+            request.url.includes("traffic=1")
+          )
+            response.end(
+              readFileSync(file, "utf8").replace(
+                "<head>",
+                '<head><script src="/tests/browser/traffic.js"></script>',
+              ),
+            );
           else
             createReadStream(file)
               .on("error", () => response.destroy())

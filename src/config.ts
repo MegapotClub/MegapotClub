@@ -3,12 +3,12 @@ export const JACKPOT = "0x3bAe643002069dBCbcd62B1A4eb4C4A397d042a2" as const;
 export const TICKET_NFT = "0x48FfE35AbB9f4780a4f1775C2Ce1c46185b366e4" as const;
 export const DEFAULT_RPC_URLS = [
   "https://mainnet.base.org/",
-  "https://base-rpc.publicnode.com",
+  "https://base-rpc.publicnode.com/",
 ];
 export const ORIGIN = "https://megapotclub.eth.limo";
 export const EXPLORER = "https://basescan.org";
 export const REFERENCE = "https://llms.megapot.io/contracts/reference";
-export const VERSION = "0.5.3";
+export const VERSION = "0.5.4";
 export const APP_NAME = "Megapot Club";
 export const PROTOCOL_NAME = "Megapot";
 export const SNAPSHOT_KEY = "megapot-club:snapshot:v1";

@@ -4,6 +4,57 @@ import { createPublicClient } from "viem";
 import { rpcHttp } from "../src/rpcTransport.ts";
 import { fetchSnapshot, fetchTicketCollections } from "../src/chain.ts";
 import { ticketRpc, fixtureAddress } from "./fixtures/ticketRpc.ts";
+import { parseJournal, reconcile } from "../src/transactions.ts";
+import { DEFAULT_RPC_URLS, JACKPOT } from "../src/config.ts";
+import { parseRpcUrls } from "../src/model.ts";
+
+test("default RPC query keys already have canonical URLs", () => {
+  assert.deepEqual(DEFAULT_RPC_URLS, parseRpcUrls(DEFAULT_RPC_URLS));
+});
+
+test("a missing receipt uses two HTTP reads on one endpoint and retains pending status", async (t) => {
+  const calls: { url: string; method: string }[] = [];
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: unknown, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      calls.push({ url: String(url), method: request.method });
+      return Response.json({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: request.method === "eth_chainId" ? "0x2105" : null,
+      });
+    },
+  );
+  const [entry] = parseJournal([
+    {
+      schema: 2,
+      id: "pending-receipt",
+      account: fixtureAddress,
+      chainId: 8453,
+      to: JACKPOT,
+      callHash: `0x${"ab".repeat(32)}`,
+      hash: `0x${"12".repeat(32)}`,
+      kind: "claim",
+      nonce: 1,
+      createdAt: Date.now(),
+      status: "pending",
+    },
+  ]);
+  await reconcile(
+    ["https://receipt-primary.example/", "https://receipt-fallback.example/"],
+    entry,
+  );
+  assert.deepEqual(calls, [
+    { url: "https://receipt-primary.example/", method: "eth_chainId" },
+    {
+      url: "https://receipt-primary.example/",
+      method: "eth_getTransactionReceipt",
+    },
+  ]);
+  assert.equal(entry.status, "pending");
+});
 
 test("seven-draw refresh and six-draw ticket history have small actual wire budgets", async (t) => {
   let calls = 0;

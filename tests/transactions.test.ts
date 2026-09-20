@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseJournal, sameCall } from "../src/transactions.ts";
+import { parseJournal, sameCall, recoveryDue } from "../src/transactions.ts";
 import { JACKPOT } from "../src/config.ts";
 const entry = {
   schema: 1,
@@ -15,6 +15,53 @@ const entry = {
   status: "pending",
   hash: `0x${"ab".repeat(32)}`,
 };
+test("restored recovery is account scoped and backs off old or hashless attempts", () => {
+  const now = 2_000_000;
+  const entries = parseJournal([
+    { ...entry, id: "fresh", createdAt: now - 10_000 },
+    { ...entry, id: "old", createdAt: now - 1_000_000 },
+    { ...entry, id: "hashless", hash: undefined, createdAt: now - 10_000 },
+    {
+      ...entry,
+      id: "other",
+      account: "0x1111111111111111111111111111111111111111",
+    },
+  ]);
+  assert.deepEqual(recoveryDue(entries, null, new Map(), now), []);
+  assert.deepEqual(
+    recoveryDue(entries, JACKPOT, new Map(), now).map((e) => e.id),
+    ["old", "fresh", "hashless"],
+  );
+  const checked = new Map(entries.map((e) => [`${e.id}:${e.hash ?? ""}`, now]));
+  assert.deepEqual(recoveryDue(entries, JACKPOT, checked, now + 14_999), []);
+  assert.deepEqual(
+    recoveryDue(entries, JACKPOT, checked, now + 15_000).map((e) => e.id),
+    ["fresh"],
+  );
+  assert.deepEqual(
+    recoveryDue(entries, JACKPOT, checked, now + 60_000).map((e) => e.id),
+    ["fresh", "hashless"],
+  );
+  assert.deepEqual(
+    recoveryDue(entries, JACKPOT, checked, now + 300_000).map((e) => e.id),
+    ["old", "fresh", "hashless"],
+  );
+  assert.deepEqual(
+    recoveryDue(
+      [
+        {
+          ...entries.find((entry) => entry.id === "old")!,
+          hash: `0x${"cd".repeat(32)}`,
+        },
+      ],
+      JACKPOT,
+      checked,
+      now,
+    ).map((e) => e.id),
+    ["old"],
+    "a late hash remains eligible",
+  );
+});
 test("journal decoding is bounded and rejects malformed execution context", () => {
   assert.equal(parseJournal([entry]).length, 1);
   for (const patch of [

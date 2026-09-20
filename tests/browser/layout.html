@@ -51,6 +51,7 @@
             Share attachment fixture
           </option>
           <option value="/dist/">Production export</option>
+          <option value="/dist/?traffic=1">Production traffic</option>
         </select></label
       ><label
         >Screen<select id="route">
@@ -97,6 +98,7 @@
         frames[0].style.height = `${width === 448 ? 998 : width === 1280 ? 900 : 844}px`;
         frames[0].previousElementSibling.textContent = `${width} × ${parseInt(frames[0].style.height)}`;
         frames[1].parentElement.hidden = width !== 390;
+        frames[1].src = width === 390 ? frames[0].src : "about:blank";
       };
       document.querySelector("#hide-fixtures").onclick = () =>
         frames.forEach((f) => {
@@ -106,18 +108,20 @@
       document.querySelector("#route").onchange = (e) =>
         frames.forEach(
           (f) =>
-            (f.src =
-              (document.querySelector("#data").value || "/") +
-              "#" +
-              e.target.value),
+            (f.src = f.parentElement.hidden
+              ? "about:blank"
+              : (document.querySelector("#data").value || "/") +
+                "#" +
+                e.target.value),
         );
       document.querySelector("#data").onchange = () =>
         frames.forEach(
           (f) =>
-            (f.src =
-              (document.querySelector("#data").value || "/") +
-              "#" +
-              document.querySelector("#route").value),
+            (f.src = f.parentElement.hidden
+              ? "about:blank"
+              : (document.querySelector("#data").value || "/") +
+                "#" +
+                document.querySelector("#route").value),
         );
       document.querySelector("#theme").onchange = (e) =>
         frames.forEach((f) => {

@@ -3,6 +3,7 @@ import {
   isAddress,
   keccak256,
   toHex,
+  TransactionReceiptNotFoundError,
   type Address,
   type Hex,
   type RpcTransactionRequest,
@@ -461,16 +462,21 @@ export async function reconcile(
   urls: string[],
   entry: Journal,
   replacementHash?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!entry.hash && !replacementHash) throw new Error("invalidHash");
   if (replacementHash && !/^0x[0-9a-fA-F]{64}$/.test(replacementHash))
     throw new Error("invalidHash");
   const inspect = async (c: EvmClient | ReturnType<typeof nativeClient>) => {
     const hash = (replacementHash ?? entry.hash) as Hex;
-    const [receipt, tx] = await Promise.all([
-      c.getTransactionReceipt({ hash }),
-      c.getTransaction({ hash }),
-    ]);
+    // A healthy RPC returning no receipt means pending/not yet indexed. It is
+    // not an endpoint failure and must not fan out to the fallback provider.
+    const receipt = await c.getTransactionReceipt({ hash }).catch((error) => {
+      if (error instanceof TransactionReceiptNotFoundError) return null;
+      throw error;
+    });
+    if (!receipt) return;
+    const tx = await c.getTransaction({ hash });
     let originalNonce: number | undefined = entry.nonceConfirmed
       ? entry.nonce
       : undefined;
@@ -558,7 +564,7 @@ export async function reconcile(
   };
   return entry.chainId === 1
     ? atEvmEndpoint(1, urls, inspect)
-    : atNativeEndpoint(urls, inspect);
+    : atNativeEndpoint(urls, inspect, signal);
 }
 
 /** A lost response has no trustworthy hash or wallet-selected nonce. Find candidates without
@@ -566,6 +572,7 @@ export async function reconcile(
 export async function findTransactionCandidates(
   urls: string[],
   entry: Journal,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (
     entry.hash ||
@@ -578,65 +585,69 @@ export async function findTransactionCandidates(
     !entry.recovery
   )
     return;
-  await atNativeEndpoint(urls, async (c) => {
-    const head = await c.getBlockNumber(),
-      from = BigInt(entry.recovery!.nextBlock);
-    if (head < from + 1n) return;
-    let to = from + 1999n < head - 1n ? from + 1999n : head - 1n;
-    const readLogs = () =>
-      entry.kind === "claim"
-        ? c.getContractEvents({
-            address: JACKPOT,
-            abi: jackpotAbi,
-            eventName: "TicketWinningsClaimed",
-            args: { userAddress: entry.account },
-            fromBlock: from,
-            toBlock: to,
-            strict: true,
-          })
-        : c.getContractEvents({
-            address: JACKPOT,
-            abi: jackpotAbi,
-            eventName: "TicketOrderProcessed",
-            args: { buyer: entry.account, recipient: entry.account },
-            fromBlock: from,
-            toBlock: to,
-            strict: true,
-          });
-    let hashes: Hex[] = [];
-    // At most eleven range probes, twenty transaction lookups. Multiple ticket
-    // events from one claim consume one lookup; a busy range is bisected.
-    for (let probe = 0; probe < 11; probe++) {
-      hashes = [
-        ...new Set((await readLogs()).map((log) => log.transactionHash)),
-      ];
-      if (hashes.length <= 20) break;
-      if (to === from) return; // Exceptional same-block volume retains manual recovery.
-      to = from + (to - from) / 2n;
-    }
-    if (hashes.length > 20) return;
-    const candidates = new Set(entry.recovery!.candidates);
-    for (const hash of hashes) {
-      const tx = await c.getTransaction({ hash });
-      if (
-        tx.from.toLowerCase() === entry.account.toLowerCase() &&
-        tx.nonce >= entry.nonce &&
-        sameCall(entry, tx)
-      )
-        candidates.add(hash);
-    }
-    if (candidates.size > 5) return;
-    const latest = journals().find((j) => j.id === entry.id);
-    if (latest && !latest.hash && UNRESOLVED.has(latest.status))
-      await write({
-        ...latest,
-        recovery: {
-          ...entry.recovery!,
-          nextBlock: (to + 1n).toString(),
-          candidates: [...candidates],
-        },
-      });
-  });
+  await atNativeEndpoint(
+    urls,
+    async (c) => {
+      const head = await c.getBlockNumber(),
+        from = BigInt(entry.recovery!.nextBlock);
+      if (head < from + 1n) return;
+      let to = from + 1999n < head - 1n ? from + 1999n : head - 1n;
+      const readLogs = () =>
+        entry.kind === "claim"
+          ? c.getContractEvents({
+              address: JACKPOT,
+              abi: jackpotAbi,
+              eventName: "TicketWinningsClaimed",
+              args: { userAddress: entry.account },
+              fromBlock: from,
+              toBlock: to,
+              strict: true,
+            })
+          : c.getContractEvents({
+              address: JACKPOT,
+              abi: jackpotAbi,
+              eventName: "TicketOrderProcessed",
+              args: { buyer: entry.account, recipient: entry.account },
+              fromBlock: from,
+              toBlock: to,
+              strict: true,
+            });
+      let hashes: Hex[] = [];
+      // At most eleven range probes and five distinct transaction lookups.
+      // Multiple ticket events from one claim consume only one lookup.
+      for (let probe = 0; probe < 11; probe++) {
+        hashes = [
+          ...new Set((await readLogs()).map((log) => log.transactionHash)),
+        ];
+        if (hashes.length <= 5) break;
+        if (to === from) return; // Exceptional same-block volume retains manual recovery.
+        to = from + (to - from) / 2n;
+      }
+      if (hashes.length > 5) return;
+      const candidates = new Set(entry.recovery!.candidates);
+      for (const hash of hashes) {
+        const tx = await c.getTransaction({ hash });
+        if (
+          tx.from.toLowerCase() === entry.account.toLowerCase() &&
+          tx.nonce >= entry.nonce &&
+          sameCall(entry, tx)
+        )
+          candidates.add(hash);
+      }
+      if (candidates.size > 5) return;
+      const latest = journals().find((j) => j.id === entry.id);
+      if (latest && !latest.hash && UNRESOLVED.has(latest.status))
+        await write({
+          ...latest,
+          recovery: {
+            ...entry.recovery!,
+            nextBlock: (to + 1n).toString(),
+            candidates: [...candidates],
+          },
+        });
+    },
+    signal,
+  );
 }
 
 /** Rotate bounded recovery work so old silent approvals cannot starve receipts. */
@@ -663,35 +674,76 @@ export function recoveryBatch(
 }
 
 /** Receipt polling is mounted once by the shell and never invokes the wallet. */
-export function useTransactionRecovery(urls: string[]) {
+export function recoveryDue(
+  items: Journal[],
+  account: string | null | undefined,
+  checked: ReadonlyMap<string, number>,
+  now = Date.now(),
+) {
+  if (!account) return [];
+  return items.filter((entry) => {
+    if (entry.account.toLowerCase() !== account.toLowerCase()) return false;
+    const interval =
+      now - entry.createdAt > 600_000 ? 300_000 : entry.hash ? 15_000 : 60_000;
+    const last = checked.get(`${entry.id}:${entry.hash ?? ""}`);
+    return last === undefined || now - last >= interval;
+  });
+}
+
+export function useTransactionRecovery(
+  urls: string[],
+  account?: string | null,
+  ready = true,
+) {
   const items = useTransactions();
   const cursor = useRef<string | undefined>(undefined);
-  const pending = items.filter(
-    (e) => e.chainId === 8453 && UNRESOLVED.has(e.status),
+  const checked = useRef(new Map<string, number>());
+  const candidates = useRef(new Map<string, number>());
+  const pending = recoveryBatch(
+    recoveryDue(items, account, new Map()),
+    undefined,
+    1,
   );
   useQuery({
-    queryKey: [
-      "transaction-recovery",
-      urls,
-      pending.map((e) => `${e.id}:${e.hash}`).join(","),
-    ],
-    enabled: pending.length > 0,
-    queryFn: async () => {
-      for (const entry of recoveryBatch(pending, cursor.current)) {
+    // Journal writes must not create overlapping observers or restart a scan.
+    queryKey: ["transaction-recovery", urls, account?.toLowerCase() ?? null],
+    enabled: ready && pending.length > 0,
+    queryFn: async ({ signal }) => {
+      if (!account || document.hidden) return Date.now();
+      const current = journals();
+      const retained = new Set(current.map((e) => `${e.id}:${e.hash ?? ""}`));
+      for (const key of checked.current.keys())
+        if (!retained.has(key)) checked.current.delete(key);
+      for (const key of candidates.current.keys())
+        if (!current.some((e) => e.id === key)) candidates.current.delete(key);
+      for (const entry of recoveryBatch(
+        recoveryDue(current, account, checked.current),
+        cursor.current,
+        1,
+      )) {
+        signal.throwIfAborted();
         cursor.current = entry.id;
-        if (entry.hash) await reconcile(urls, entry).catch(() => {});
+        checked.current.set(`${entry.id}:${entry.hash ?? ""}`, Date.now());
+        if (entry.hash)
+          await reconcile(urls, entry, undefined, signal).catch(() => {});
         else {
-          await findTransactionCandidates(urls, entry).catch(() => {});
+          if (!entry.recovery?.candidates.length)
+            await findTransactionCandidates(urls, entry, signal).catch(
+              () => {},
+            );
+          signal.throwIfAborted();
           const latest = journals().find((j) => j.id === entry.id);
           if (!latest || !UNRESOLVED.has(latest.status)) continue;
-          for (const hash of latest.recovery?.candidates ?? []) {
-            await reconcile(urls, latest!, hash).catch(() => {});
-            if (
-              !UNRESOLVED.has(
-                journals().find((j) => j.id === entry.id)?.status ?? "",
-              )
-            )
-              break;
+          const hashes = latest.recovery?.candidates ?? [];
+          if (hashes.length) {
+            const index = candidates.current.get(entry.id) ?? 0;
+            candidates.current.set(entry.id, index + 1);
+            await reconcile(
+              urls,
+              latest,
+              hashes[index % hashes.length],
+              signal,
+            ).catch(() => {});
           }
         }
       }
@@ -700,7 +752,8 @@ export function useTransactionRecovery(urls: string[]) {
     staleTime: 12_000,
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false,
   });
 }

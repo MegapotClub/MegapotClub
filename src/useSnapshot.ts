@@ -148,5 +148,5 @@ export function useSnapshot(rootPath: string) {
     };
   }, [ready, refresh]);
 
-  return { snapshot, urls, setUrls, refresh, loading, error, live };
+  return { snapshot, urls, setUrls, refresh, loading, error, live, ready };
 }
