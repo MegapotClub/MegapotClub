@@ -45,6 +45,7 @@ export const qaPlayerAbi = parseAbi([
   "function getTicketTierIds(uint256[]) view returns (uint256[])",
   "function getDrawingTierPayouts(uint256) view returns (uint256[12])",
   "function getTierPayout(uint256,uint256) view returns (uint256)",
+  "function getExpectedDrawingTierPayouts(uint256,uint256,uint8,uint8) view returns (uint256[12])",
   "function ownerOf(uint256) view returns (address)",
   "function allowTicketPurchases() view returns (bool)",
   "function emergencyMode() view returns (bool)",
@@ -269,6 +270,11 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
         break;
       case "getDrawingTierPayouts":
         result = tiers;
+        break;
+      case "getExpectedDrawingTierPayouts":
+        result = tiers.map((amount, tier) =>
+          tier === 11 ? 220_000_000_000n : amount,
+        );
         break;
       case "allowTicketPurchases":
         result = options.allowPurchases ?? true;

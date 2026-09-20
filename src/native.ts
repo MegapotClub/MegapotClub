@@ -154,6 +154,7 @@ const nftAbi = parseAbi([
 ]);
 const payoutAbi = parseAbi([
   "function getTierPayout(uint256,uint256) view returns (uint256)",
+  "function getExpectedDrawingTierPayouts(uint256,uint256,uint8,uint8) view returns (uint256[12])",
 ]);
 const subscriptionAbi = parseAbi([
   "function subscriptions(address) view returns (uint64 remainingUSDC, uint64 lastExecutedDrawing, uint64 subscribedTicketPrice, uint64 dynamicTicketCount, bytes32 source)",
@@ -1143,25 +1144,45 @@ export async function readNativeHistory(
   });
 }
 
-/** Public referral economics for display; signing always performs its own review. */
+/**
+ * @cc [label:data] jackpot-referral-example
+ * The referral example MUST use the current drawing's expected jackpot-tier
+ * gross payout and referral share at the same block, never the entire prize pool.
+ * This public observation cannot authorize signing.
+ */
 export function readReferralTerms(urls: string[], signal?: AbortSignal) {
   return atNativeEndpoint(
     urls,
     async (c) => {
+      const blockNumber = await c.getBlockNumber();
       const draw = await c.readContract({
         address: JACKPOT,
         abi: jackpotAbi,
         functionName: "currentDrawingId",
+        blockNumber,
       });
       const state = await c.readContract({
         address: JACKPOT,
         abi: jackpotAbi,
         functionName: "getDrawingState",
         args: [draw],
+        blockNumber,
       });
+      // Current draws have no stored settlement payout yet. Ask the deployed
+      // calculator for its expected tiers using this drawing's actual inputs.
+      const payouts = await c.readContract({
+        address: state.payoutCalculator,
+        abi: payoutAbi,
+        functionName: "getExpectedDrawingTierPayouts",
+        args: [draw, state.prizePool, state.ballMax, state.bonusballMax],
+        blockNumber,
+      });
+      const jackpotGross = payouts[11];
       return {
         draw,
-        prizePool: state.prizePool,
+        jackpotGross,
+        jackpotReferralReward:
+          (jackpotGross * state.referralWinShare) / 10n ** 18n,
         purchaseFee: state.referralFee,
         winShare: state.referralWinShare,
       };
