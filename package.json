@@ -1,6 +1,6 @@
 {
   "name": "megapot-club",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 4173",
     "build": "tsc --noEmit && vite build && vite build --ssr src/entry-server.tsx --outDir .build/ssr && node scripts/finalize.mjs",
-    "test": "node --experimental-test-module-mocks --test tests/*.test.ts tests/*.test.mjs",
+    "test": "node --experimental-test-module-mocks --test --test-concurrency=2 --test-reporter=tap tests/*.test.ts tests/*.test.mjs",
     "contracts:build": "node scripts/compile-contracts.mjs",
     "contracts:test": "node --test tests/*vault.test.mjs tests/*transport.test.mjs tests/*strategy.test.mjs",
     "check": "tsc --noEmit && npm test",
@@ -54,6 +54,7 @@
   "packageManager": "npm@11.9.0",
   "overrides": {
     "tmp": "0.2.7",
-    "ws@>=8.0.0 <8.21.0": "8.21.0"
+    "ws@>=8.0.0 <8.21.0": "8.21.0",
+    "uuid@<11.1.1": "11.1.1"
   }
 }
