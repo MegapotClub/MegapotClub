@@ -39,8 +39,13 @@
           <option value="reverted">Revert</option>
           <option value="ambiguous">Lose response</option>
           <option value="unavailable">Wallet unavailable</option>
+          <option value="silent">Never respond</option>
         </select></label
       >
+      <button id="finish-request" disabled>
+        Complete oldest waiting request
+      </button>
+      <output id="sdk-audit"></output>
       <button id="reset-fixture">Reset synthetic activity</button>
       <button id="switch-account">Switch synthetic account</button>
       <label
@@ -76,6 +81,16 @@
       // The read-only snapshot verifier uses its bundled pin independently of action pins.
       (await import("/src/snapshot.json")).default.codeHash = qaCodeHash;
       const parameters = new URLSearchParams(location.search);
+      const { dispatchCoinbaseWalletFixture } = await import(
+        "../fixtures/coinbaseWalletBoundary.ts"
+      );
+      const sdkAudits = [],
+        waitingRequests = [];
+      const finishRequest = document.getElementById("finish-request");
+      finishRequest.onclick = () => {
+        waitingRequests.shift()?.();
+        finishRequest.disabled = waitingRequests.length === 0;
+      };
       const shareMode = parameters.get("shareFixture");
       // Synthetic share/clipboard adapters never transmit data. They inspect the exact
       // generated PNG and caption when native APIs are unavailable in an HTTP preview.
@@ -390,22 +405,48 @@
                 to: params[0].to,
               });
             const outcome = outcomeControl.value;
-            if (outcome === "unavailable")
-              throw new Error("Synthetic wallet unavailable");
             if (
-              !["confirmed", "reverted", "ambiguous", "rejected"].includes(
-                outcome,
-              )
+              ![
+                "confirmed",
+                "reverted",
+                "ambiguous",
+                "rejected",
+                "unavailable",
+                "silent",
+              ].includes(outcome)
             )
               throw new Error("Invalid synthetic outcome");
-            try {
-              return rpc.simulateSend(params[0], outcome);
-            } finally {
-              if (outcome !== "rejected") {
-                ledger.push({ input: params[0], outcome });
-                sessionStorage.setItem(ledgerKey, JSON.stringify(ledger));
-              }
-            }
+            // Exercise the installed Coinbase encoder for every send. Only its
+            // external relay is replaced; no wallet service or chain is contacted.
+            return dispatchCoinbaseWalletFixture(
+              params[0],
+              async (input) => {
+                if (outcome === "unavailable")
+                  throw new Error("Synthetic wallet unavailable");
+                if (outcome === "silent") {
+                  await new Promise((resolve) => waitingRequests.push(resolve));
+                }
+                const settledOutcome =
+                  outcome === "silent" ? "confirmed" : outcome;
+                try {
+                  return rpc.simulateSend(input, settledOutcome);
+                } finally {
+                  if (settledOutcome !== "rejected") {
+                    ledger.push({ input, outcome: settledOutcome });
+                    sessionStorage.setItem(ledgerKey, JSON.stringify(ledger));
+                  }
+                }
+              },
+              (audit) => {
+                sdkAudits.push(audit);
+                document.getElementById("sdk-audit").textContent =
+                  JSON.stringify(sdkAudits);
+                // The silent transport registers its resolver on the next microtask.
+                queueMicrotask(() => {
+                  finishRequest.disabled = waitingRequests.length === 0;
+                });
+              },
+            );
           }
           throw Object.assign(new Error("Fixture never signs or sends"), {
             code: -32601,
