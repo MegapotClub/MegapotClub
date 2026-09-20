@@ -81,7 +81,7 @@ for (const locale of ["", ...locales]) {
   assert.ok(html.includes(`content="${ORIGIN}/og.png"`), file);
   assert.ok(
     html.includes(
-      `rel="manifest" href="${locale ? "../" : "./"}manifest.webmanifest"`,
+      `rel="manifest" href="${locale ? "../" : "./"}manifest.webmanifest" crossorigin="use-credentials"`,
     ),
     file,
   );
