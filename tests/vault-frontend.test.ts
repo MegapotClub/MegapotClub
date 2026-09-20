@@ -1,5 +1,7 @@
 import { test, mock, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
+import * as realNative from "../src/native.ts";
+import { createLocks } from "./fixtures/locks.ts";
 import type { VaultReview } from "../src/vaults.ts";
 const account = "0x1111111111111111111111111111111111111111" as const;
 const target = "0x2222222222222222222222222222222222222222" as const;
@@ -32,7 +34,7 @@ Object.defineProperty(globalThis, "window", {
 });
 Object.defineProperty(globalThis, "navigator", {
   configurable: true,
-  value: {},
+  value: { locks: createLocks() },
 });
 after(() => {
   for (const [key, d] of globals) {
@@ -71,6 +73,7 @@ const client = {
 };
 mock.module("../src/native.ts", {
   namedExports: {
+    ...realNative,
     nativeClient: () => client,
     atNativeEndpoint: async (_u: unknown, read: any) => {
       paths.push(8453);

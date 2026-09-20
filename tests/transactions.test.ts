@@ -27,7 +27,13 @@ test("journal decoding is bounded and rejects malformed execution context", () =
     { account: "0x1234" },
   ])
     assert.equal(parseJournal([{ ...entry, ...patch }]).length, 0);
-  assert.equal(parseJournal(Array(150).fill(entry)).length, 100);
+  assert.equal(parseJournal([{ ...entry, kind: "purchase" }]).length, 1);
+  assert.equal(
+    parseJournal(
+      Array.from({ length: 150 }, (_, i) => ({ ...entry, id: String(i) })),
+    ).length,
+    150,
+  );
 });
 test("a successful replacement counts as intended only if destination, calldata and zero value match", () => {
   const a = { to: JACKPOT, data: "0x30fcc737" as const };
@@ -77,7 +83,7 @@ test("vault journals preserve exact native value and chain while rejecting unsaf
 });
 
 test("storage failure retains the memory journal instead of reloading stale persisted state", async (t) => {
-  const { journals, forgetUnsubmitted, journalStorageAvailable } = await import(
+  const { journals, writeJournal, journalStorageAvailable } = await import(
     "../src/transactions.ts"
   );
   const storage = {
@@ -87,9 +93,13 @@ test("storage failure retains the memory journal instead of reloading stale pers
       throw new Error("quota");
     },
   };
-  const descriptors = ["localStorage", "window"].map(
+  const descriptors = ["localStorage", "window", "navigator"].map(
     (key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const,
   );
+  Object.defineProperty(globalThis, "navigator", {
+    value: { locks: { request: (_name: string, cb: () => unknown) => cb() } },
+    configurable: true,
+  });
   Object.defineProperty(globalThis, "localStorage", {
     value: storage,
     configurable: true,
@@ -105,7 +115,7 @@ test("storage failure retains the memory journal instead of reloading stale pers
     }
   });
   assert.equal(journals()[0].status, "wallet");
-  forgetUnsubmitted("record");
+  await writeJournal({ ...journals()[0], status: "rejected" });
   assert.equal(journals()[0].status, "rejected");
   assert.equal(journalStorageAvailable(), false);
 });

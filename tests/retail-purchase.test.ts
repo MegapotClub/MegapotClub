@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parsePurchaseDraft, purchaseIntent } from "../src/purchaseDraft.ts";
+import { parsePurchaseDraft, purchaseAction } from "../src/purchaseDraft.ts";
 import { parseRoute, routeHref } from "../src/navigation.ts";
 import { parseIndexedWins } from "../src/megapotApi.ts";
 import type { Draw } from "../src/model.ts";
@@ -27,41 +27,49 @@ const draft = {
     { numbers: [6, 7, 8, 9, 10], bonus: 1 },
   ],
 };
-const wallet = "0x1111111111111111111111111111111111111111";
-test("purchase intent preserves exact price, selections and referral without authorization fields", () => {
-  const intent = purchaseIntent(draft, draw, wallet, wallet);
-  assert.equal(intent.total, "2000002");
-  assert.equal(intent.referrer, wallet);
-  assert.equal(intent.quantity, 2);
-  assert.deepEqual(intent.selections, draft.rows);
-  assert.equal("signature" in intent, false);
-  assert.equal("transactionHash" in intent, false);
+const wallet = "0x1111111111111111111111111111111111111111" as const;
+const chosenRows = [
+  { numbers: [5, 1, 30, 22, 9], bonus: 10 },
+  { numbers: [1, 2, 3, 4, 5], bonus: 1 },
+];
+test("purchase actions carry exact price, selections and the buyer without authorization fields", () => {
+  const action = purchaseAction(draft, draw, wallet);
+  assert.equal(action.kind, "purchase");
+  assert.equal(action.unitPrice * BigInt(action.tickets.length), 2000002n);
+  assert.equal(action.recipient, wallet);
+  assert.equal(action.tickets.length, 2);
+  assert.deepEqual(action.tickets, draft.rows);
+  assert.equal("signature" in action, false);
+  assert.equal("transactionHash" in action, false);
   assert.equal(
-    purchaseIntent({ ...draft, mode: "quick" }, draw).selections,
-    null,
-  );
-  assert.equal(
-    purchaseIntent({ ...draft, mode: "quick" }, draw).total,
-    "3000003",
+    purchaseAction({ ...draft, mode: "quick" }, draw, wallet).tickets.length,
+    3,
   );
 });
-test("malformed drafts and changed draws cannot become purchase intents", () => {
+test("malformed drafts cannot become purchases; draw rollover preserves selections", () => {
   for (const bad of [
     { ...draft, quantity: 0 },
     { ...draft, quantity: 101 },
     { ...draft, quantity: Infinity },
     { ...draft, rows: [] },
     { ...draft, rows: [{ numbers: [1, 1, 2, 3, 4], bonus: 1 }] },
-    { ...draft, rows: [{ numbers: [1, 2, 3, 4, 31], bonus: 1 }] },
-    { ...draft, rows: [{ numbers: [1, 2, 3, 4, 5], bonus: 11 }] },
+    { ...draft, rows: [{ numbers: [1, 2, 3, 4, 256], bonus: 1 }] },
+    { ...draft, rows: [{ numbers: [1, 2, 3, 4, 5], bonus: 256 }] },
   ])
     assert.equal(parsePurchaseDraft(bad, draw), null);
-  assert.throws(() => purchaseIntent({ ...draft, draw: "177" }, draw));
-  assert.throws(() =>
-    purchaseIntent(draft, draw, wallet, "javascript:alert(1)"),
+  assert.deepEqual(
+    purchaseAction({ ...draft, draw: "177" }, draw, wallet).tickets,
+    draft.rows,
   );
   assert.throws(() =>
-    purchaseIntent({ ...draft, rows: [{ numbers: [], bonus: 1 }] }, draw),
+    purchaseAction(
+      { ...draft, rows: [{ numbers: [], bonus: 1 }] },
+      draw,
+      wallet,
+    ),
+  );
+  assert.throws(() =>
+    purchaseAction({ ...draft, mode: "quick", quantity: 101 }, draw, wallet),
   );
 });
 test("retired Plans and new retail links restore only inert bounded state", () => {
@@ -75,7 +83,7 @@ test("retired Plans and new retail links restore only inert bounded state", () =
     assert.deepEqual(parseRoute(routeHref(route)), route);
   assert.deepEqual(
     parseRoute("#play?confirmed=1&send=1&hash=0xabc&ref=javascript:bad"),
-    { view: "play" },
+    { view: "play", ref: "javascript:bad" },
   );
 });
 test("indexed wins are wallet/draw scoped and claimed amounts cannot be invented", () => {
@@ -129,4 +137,77 @@ test("every retail locale has complete keys and matching interpolation", () => {
       );
     }
   }
+});
+test("draft orders keep the displayed price and draw, and quick play draws bounded local numbers", () => {
+  const chosen = purchaseAction(
+    {
+      schema: 1,
+      draw: "178",
+      quantity: 7,
+      mode: "choose",
+      rows: chosenRows,
+    },
+    draw,
+    wallet,
+  );
+  assert.equal(chosen.unitPrice, 1_000_001n);
+  assert.equal(chosen.drawId, 178n);
+  assert.equal(chosen.recipient, wallet);
+  assert.deepEqual(
+    chosen.tickets.map((t) => t.numbers),
+    [
+      [1, 5, 9, 22, 30],
+      [1, 2, 3, 4, 5],
+    ],
+  );
+  let counter = 0;
+  const quick = purchaseAction(
+    {
+      schema: 1,
+      draw: "178",
+      quantity: 3,
+      mode: "quick",
+      rows: [{ numbers: [], bonus: 1 }],
+    },
+    draw,
+    wallet,
+    (array) => {
+      array[0] = counter++;
+      return array;
+    },
+  );
+  assert.equal(quick.tickets.length, 3);
+  for (const t of quick.tickets) {
+    assert.equal(new Set(t.numbers).size, 5);
+    assert.ok(t.numbers.every((n) => n >= 1 && n <= 30));
+    assert.ok(t.bonus >= 1 && t.bonus <= 10);
+  }
+  assert.equal(
+    purchaseAction(
+      { schema: 1, draw: "177", quantity: 1, mode: "quick", rows: [] },
+      draw,
+      wallet,
+    ).tickets.length,
+    1,
+  );
+  assert.throws(() =>
+    purchaseAction(
+      {
+        schema: 1,
+        draw: "178",
+        quantity: 1,
+        mode: "choose",
+        rows: [{ numbers: [], bonus: 1 }],
+      },
+      draw,
+      wallet,
+    ),
+  );
+  assert.throws(() =>
+    purchaseAction(
+      { schema: 1, draw: "178", quantity: 1, mode: "quick", rows: [] },
+      draw,
+      "0xabc" as never,
+    ),
+  );
 });

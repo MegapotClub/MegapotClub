@@ -6,6 +6,7 @@ import {
   getAddress,
   isAddress,
   parseUnits,
+  stringToHex,
   type Address,
   type Hex,
 } from "viem";
@@ -14,12 +15,21 @@ import { rpcHttp } from "./rpcTransport.ts";
 import { JACKPOT, TICKET_NFT } from "./config.ts";
 import { parseRpcUrls } from "./model.ts";
 import { nativeReturnPpm } from "./historyMath.ts";
+import { validNumbers } from "./plans.ts";
+import { resolveReferrer } from "./referral.ts";
+export { CLUB_REFERRER } from "./referral.ts";
 
 export const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 export const LP_MANAGER = "0xE63E54DF82d894396B885CE498F828f2454d9dCf" as const;
 export const SUBSCRIPTION =
   "0x2694Bd48f3e6B4775943067DC842C93bf5F19DcD" as const;
 export const BATCH = "0xBA343479D98a1Ed333899999D95a7343B808a76F" as const;
+/** Protocol telemetry tag naming this application as the purchase source. */
+export const PURCHASE_SOURCE = stringToHex("megapotclub.eth.limo", {
+  size: 32,
+});
+const REFERRAL_UNIT = 10n ** 18n;
+export const MAX_PURCHASE_TICKETS = 100;
 export const REGISTRY = [
   {
     name: "Jackpot",
@@ -48,15 +58,75 @@ export const REGISTRY = [
   },
 ] as const;
 export const jackpotAbi = parseAbi([
+  "error ContractAlreadyInitialized()",
+  "error ContractNotInitialized()",
+  "error DepositAmountZero()",
+  "error DrawingNotDue()",
+  "error EmergencyEnabled()",
+  "error EmergencyModeAlreadyEnabled()",
+  "error EmergencyModeNotEngaged()",
+  "error InsufficientEntropyFee()",
+  "error InvalidBonusball()",
+  "error InvalidBonusballHardCap()",
+  "error InvalidBonusballMin()",
+  "error InvalidBonusballSoftCap()",
+  "error InvalidDrawingDuration()",
+  "error InvalidDrawingId()",
+  "error InvalidGovernancePoolCap()",
+  "error InvalidLpEdgeTarget()",
+  "error InvalidMaxReferrers()",
+  "error InvalidNormalBallMax()",
+  "error InvalidNormalsCount()",
+  "error InvalidProtocolFee()",
+  "error InvalidRecipient()",
+  "error InvalidReferralFee()",
+  "error InvalidReferralSplitBps()",
+  "error InvalidReferralWinShare()",
+  "error InvalidReserveRatio()",
+  "error InvalidTicketCount()",
+  "error InvalidTicketPrice()",
+  "error JackpotAlreadyInitialized()",
+  "error JackpotLocked()",
+  "error JackpotNotInitialized()",
+  "error JackpotNotLocked()",
+  "error LPDepositsAlreadyInitialized()",
+  "error LPDepositsNotInitialized()",
+  "error NoLPDeposits()",
+  "error NoPrizePool()",
+  "error NoReferralFeesToClaim()",
+  "error NoTicketsProvided()",
+  "error NoTicketsToClaim()",
+  "error NotTicketOwner()",
+  "error OwnableInvalidOwner(address owner)",
+  "error OwnableUnauthorizedAccount(address account)",
+  "error ReentrancyGuardReentrantCall()",
+  "error ReferralSplitLengthMismatch()",
+  "error ReferralSplitSumInvalid()",
+  "error SafeERC20FailedOperation(address token)",
+  "error TicketFromFutureDrawing()",
+  "error TicketNotEligibleForRefund()",
+  "error TicketPurchasesAlreadyDisabled()",
+  "error TicketPurchasesAlreadyEnabled()",
+  "error TicketPurchasesDisabled()",
+  "error TooManyReferrers()",
+  "error Uint8OutOfBounds()",
+  "error UnauthorizedEntropyCaller()",
+  "error WithdrawAmountZero()",
+  "error ZeroAddress()",
+  "event TicketOrderProcessed(address indexed buyer, address indexed recipient, uint256 indexed currentDrawingId, uint256 numberOfTickets, uint256 lpEarnings, uint256 referralFees)",
+  "event TicketPurchased(address indexed recipient, uint256 indexed currentDrawingId, bytes32 indexed source, uint256 userTicketId, uint8[] normals, uint8 bonusball, bytes32 referralScheme)",
+  "event TicketWinningsClaimed(address indexed userAddress, uint256 indexed drawingId, uint256 userTicketId, uint256 matchedNormals, bool bonusballMatch, uint256 winningsAmount)",
   "function currentDrawingId() view returns (uint256)",
   "function getDrawingState(uint256) view returns ((uint256 prizePool, uint256 ticketPrice, uint256 edgePerTicket, uint256 referralWinShare, uint256 referralFee, uint256 globalTicketsBought, uint256 lpEarnings, uint256 drawingTime, uint256 winningTicket, uint8 ballMax, uint8 bonusballMax, address payoutCalculator, bool jackpotLock))",
   "function getDrawingTierPayouts(uint256) view returns (uint256[12])",
   "function getTicketTierIds(uint256[]) view returns (uint256[])",
   "function emergencyMode() view returns (bool)",
+  "function allowTicketPurchases() view returns (bool)",
   "function referralFees(address) view returns (uint256)",
   "function usdc() view returns (address)",
   "function jackpotLPManager() view returns (address)",
   "function jackpotNFT() view returns (address)",
+  "function buyTickets((uint8[] normals, uint8 bonusball)[], address, address[], uint256[], bytes32) returns (uint256[])",
   "function lpDeposit(uint256)",
   "function initiateWithdraw(uint256)",
   "function finalizeWithdraw()",
@@ -73,7 +143,7 @@ const lpAbi = parseAbi([
   "function getEstimatedNextDrawingLpPool() view returns (uint256)",
   "function getLPDrawingState(uint256) view returns ((uint256 lpPoolTotal, uint256 pendingDeposits, uint256 pendingWithdrawals))",
 ]);
-const tokenAbi = parseAbi([
+export const tokenAbi = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function allowance(address,address) view returns (uint256)",
   "function approve(address,uint256) returns (bool)",
@@ -94,9 +164,20 @@ const batchAbi = parseAbi([
   "function cancelBatchOrder()",
 ]);
 
+export type TicketSelection = { numbers: number[]; bonus: number };
 export type Action =
   | { kind: "deposit"; amount: bigint }
   | { kind: "withdraw"; shares: bigint }
+  | {
+      kind: "purchase";
+      tickets: TicketSelection[];
+      recipient: Address;
+      drawId: bigint;
+      unitPrice: bigint;
+      referrer: Address;
+      orderId?: string;
+      draftKey?: string;
+    }
   | { kind: "claim" | "refund"; ids: bigint[] }
   | {
       kind:
@@ -123,6 +204,11 @@ export type Position = {
   draw: bigint;
   locked: boolean;
   emergency: boolean;
+  ticketPrice: bigint;
+  prizePool: bigint;
+  ballMax: number;
+  bonusMax: number;
+  drawingTime: bigint;
   balance: bigint;
   ether: bigint;
   allowance: bigint;
@@ -145,7 +231,7 @@ export type Review = {
   block: bigint;
   createdAt: number;
   amount: bigint;
-  position: Position;
+  position: Position | RetailPosition;
   calls: Call[];
   endpoint: string;
 };
@@ -169,10 +255,37 @@ export function ticketIds(text: string): bigint[] {
     throw new Error("invalidTickets");
   return ids;
 }
+/** @cc [label:correctness] bounded-ticket-order
+ * A purchase order MUST contain 1–100 tickets, each with five distinct main numbers and one bonus
+ * number inside the supplied ranges. The exact order is encoded; no ticket is added, dropped or reordered.
+ */
+export function purchaseTickets(
+  tickets: TicketSelection[],
+  ballMax = 255,
+  bonusMax = 255,
+): TicketSelection[] {
+  if (
+    !Array.isArray(tickets) ||
+    tickets.length < 1 ||
+    tickets.length > MAX_PURCHASE_TICKETS ||
+    !tickets.every(
+      (t) =>
+        t &&
+        Array.isArray(t.numbers) &&
+        validNumbers(t.numbers, t.bonus, ballMax, bonusMax),
+    )
+  )
+    throw new Error("invalidSelection");
+  return tickets.map((t) => ({
+    numbers: [...t.numbers].sort((a, b) => a - b),
+    bonus: t.bonus,
+  }));
+}
 export const nativeClient = (urls: string[], signal?: AbortSignal) =>
   createPublicClient({
     chain: base,
     ccipRead: false,
+    batch: { multicall: { wait: 15, batchSize: 16_384 } },
     transport: rpcHttp(parseRpcUrls(urls)[0], {
       timeout: 12_000,
       retryCount: 0,
@@ -192,11 +305,15 @@ type Client = ReturnType<typeof nativeClient>;
 export async function atNativeEndpoint<T>(
   urls: string[],
   read: (client: Client, endpoint: string) => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
   let last: unknown = new Error("rpcUnavailable");
   for (const endpoint of parseRpcUrls(urls)) {
+    if (signal?.aborted) throw new Error("reviewCancelled");
     const controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), 45_000);
+    const cancel = () => controller.abort();
+    signal?.addEventListener("abort", cancel, { once: true });
     try {
       const client = nativeClient([endpoint], controller.signal);
       if ((await client.getChainId()) !== 8453) throw new Error("wrongChain");
@@ -206,6 +323,7 @@ export async function atNativeEndpoint<T>(
     } finally {
       clearTimeout(timer);
       controller.abort();
+      signal?.removeEventListener("abort", cancel);
     }
   }
   throw last;
@@ -236,21 +354,129 @@ async function linked(c: Client, blockNumber: bigint, address: Address) {
       throw new Error("contractChanged");
   }
 }
+const deploymentChecks = new Map<string, number>();
 async function pinned(c: Client, block: bigint, address: Address) {
   const expected = REGISTRY.find(
     (r) => r.address.toLowerCase() === address.toLowerCase(),
   );
+  const key = `${c.transport.url}:${address}:${expected?.hash}`;
+  if ((deploymentChecks.get(key) ?? 0) > Date.now()) return;
   const code = await c.getCode({ address, blockNumber: block });
   if (!expected || !code || keccak256(code) !== expected.hash)
     throw new Error("contractChanged");
+  // These pinned contracts are immutable, not upgradeable proxies. Cache only a positive
+  // runtime match at this endpoint; transaction-sensitive state is always read afresh.
+  deploymentChecks.set(key, Date.now() + 10 * 60_000);
 }
 async function fresh(c: Client) {
-  if ((await c.getChainId()) !== 8453) throw new Error("wrongChain");
   const block = await c.getBlock();
   const age = Date.now() / 1000 - Number(block.timestamp);
   if (age < -30 || age > 120 || block.number === null || !block.hash)
     throw new Error("staleChain");
   return block;
+}
+
+export type RetailPosition = Pick<
+  Position,
+  | "account"
+  | "block"
+  | "blockHash"
+  | "timestamp"
+  | "draw"
+  | "locked"
+  | "emergency"
+  | "ticketPrice"
+  | "prizePool"
+  | "ballMax"
+  | "bonusMax"
+  | "drawingTime"
+  | "balance"
+  | "ether"
+  | "allowance"
+  | "referral"
+> & { allowTicketPurchases: boolean; contractWallet: boolean };
+
+/** Retail reviews read no LP shares, withdrawal balances or automation-helper state. */
+async function readRetailPositionAt(
+  c: Client,
+  input: string,
+): Promise<RetailPosition> {
+  if (!isAddress(input)) throw new Error("invalidAddress");
+  const account = getAddress(input),
+    b = await fresh(c),
+    blockNumber = b.number;
+  const j = { address: JACKPOT, abi: jackpotAbi, blockNumber } as const;
+  const [
+    draw,
+    emergency,
+    allowTicketPurchases,
+    token,
+    nft,
+    manager,
+    balance,
+    allowance,
+    ether,
+    referral,
+    code,
+  ] = await Promise.all([
+    c.readContract({ ...j, functionName: "currentDrawingId" }),
+    c.readContract({ ...j, functionName: "emergencyMode" }),
+    c.readContract({ ...j, functionName: "allowTicketPurchases" }),
+    c.readContract({ ...j, functionName: "usdc" }),
+    c.readContract({ ...j, functionName: "jackpotNFT" }),
+    c.readContract({ ...j, functionName: "jackpotLPManager" }),
+    c.readContract({
+      address: USDC,
+      abi: tokenAbi,
+      functionName: "balanceOf",
+      args: [account],
+      blockNumber,
+    }),
+    c.readContract({
+      address: USDC,
+      abi: tokenAbi,
+      functionName: "allowance",
+      args: [account, JACKPOT],
+      blockNumber,
+    }),
+    c.getBalance({ address: account, blockNumber }),
+    c.readContract({ ...j, functionName: "referralFees", args: [account] }),
+    c.getCode({ address: account, blockNumber }),
+    pinned(c, blockNumber, JACKPOT),
+  ]);
+  if (
+    token.toLowerCase() !== USDC.toLowerCase() ||
+    nft.toLowerCase() !== TICKET_NFT.toLowerCase() ||
+    manager.toLowerCase() !== LP_MANAGER.toLowerCase()
+  )
+    throw new Error("contractChanged");
+  const state = await c.readContract({
+    ...j,
+    functionName: "getDrawingState",
+    args: [draw],
+  });
+  return {
+    account,
+    block: blockNumber,
+    blockHash: b.hash!,
+    timestamp: b.timestamp,
+    draw,
+    emergency,
+    allowTicketPurchases,
+    locked: state.jackpotLock,
+    ticketPrice: state.ticketPrice,
+    prizePool: state.prizePool,
+    ballMax: state.ballMax,
+    bonusMax: state.bonusballMax,
+    drawingTime: state.drawingTime,
+    balance,
+    allowance,
+    ether,
+    referral,
+    contractWallet: Boolean(
+      code && code !== "0x" && !/^0xef0100[0-9a-fA-F]{40}$/.test(code),
+    ),
+  };
 }
 
 /** @cc [label:security] transaction-observation
@@ -366,6 +592,11 @@ async function readPositionAt(c: Client, input: string): Promise<Position> {
     draw,
     locked: state.jackpotLock,
     emergency,
+    ticketPrice: state.ticketPrice,
+    prizePool: state.prizePool,
+    ballMax: state.ballMax,
+    bonusMax: state.bonusballMax,
+    drawingTime: state.drawingTime,
     balance,
     ether,
     allowance,
@@ -386,9 +617,48 @@ async function readPositionAt(c: Client, input: string): Promise<Position> {
 
 /** @cc [label:security] closed-call-set
  * Calls MUST be derived solely from this discriminated action set, with canonical destinations and zero ETH value.
- * Deposit approval MUST name Jackpot and the exact requested amount. Purchase selectors MUST remain absent.
+ * Deposit and purchase approvals MUST name Jackpot and the exact requested amount. A purchase MUST call
+ * Jackpot.buyTickets with the selected tickets, connected recipient and immutable resolved referrer.
  */
 export function actionCalls(action: Action, allowance = 0n): Call[] {
+  if (action.kind === "purchase") {
+    const tickets = purchaseTickets(action.tickets);
+    if (
+      !isAddress(action.recipient) ||
+      action.unitPrice <= 0n ||
+      action.unitPrice >= 2n ** 256n
+    )
+      throw new Error("invalidSelection");
+    const total = action.unitPrice * BigInt(tickets.length);
+    if (total >= 2n ** 256n) throw new Error("invalidAmount");
+    const approve: Call = {
+      to: USDC,
+      data: encodeFunctionData({
+        abi: tokenAbi,
+        functionName: "approve",
+        args: [JACKPOT, total],
+      }),
+      value: 0n,
+      kind: "approve",
+    };
+    const buy: Call = {
+      to: JACKPOT,
+      data: encodeFunctionData({
+        abi: jackpotAbi,
+        functionName: "buyTickets",
+        args: [
+          tickets.map((t) => ({ normals: t.numbers, bonusball: t.bonus })),
+          getAddress(action.recipient),
+          [resolveReferrer(action.referrer)],
+          [REFERRAL_UNIT],
+          PURCHASE_SOURCE,
+        ],
+      }),
+      value: 0n,
+      kind: action.kind,
+    };
+    return allowance >= total ? [buy] : [approve, buy];
+  }
   if (action.kind === "deposit") {
     if (action.amount <= 0n || action.amount >= 2n ** 256n)
       throw new Error("invalidAmount");
@@ -507,9 +777,12 @@ export function reviewAction(
   urls: string[],
   account: string,
   action: Action,
+  signal?: AbortSignal,
 ): Promise<Review> {
-  return atNativeEndpoint(urls, (c, endpoint) =>
-    reviewActionAt(c, endpoint, account, action),
+  return atNativeEndpoint(
+    urls,
+    (c, endpoint) => reviewActionAt(c, endpoint, account, action),
+    signal,
   );
 }
 async function reviewActionAt(
@@ -518,30 +791,53 @@ async function reviewActionAt(
   account: string,
   action: Action,
 ): Promise<Review> {
-  const p = await readPositionAt(c, account),
+  const retail = ["purchase", "claim", "refund", "referral"].includes(
+    action.kind,
+  );
+  const full = retail ? undefined : await readPositionAt(c, account);
+  const p = full ?? (await readRetailPositionAt(c, account)),
     blockNumber = p.block;
   let amount = 0n;
-  if (action.kind === "deposit") {
+  if (action.kind === "purchase") {
+    if (action.recipient.toLowerCase() !== p.account.toLowerCase())
+      throw new Error("walletChanged");
+    const tickets = purchaseTickets(action.tickets, p.ballMax, p.bonusMax);
+    if (
+      p.emergency ||
+      p.locked ||
+      p.prizePool === 0n ||
+      !("allowTicketPurchases" in p && p.allowTicketPurchases)
+    )
+      throw new Error("drawLocked");
+    action = { ...action, tickets, unitPrice: p.ticketPrice, drawId: p.draw };
+    amount = p.ticketPrice * BigInt(tickets.length);
+    if (amount > p.balance) throw new Error("insufficientBalance");
+  } else if (action.kind === "deposit") {
     amount = action.amount;
     if (p.emergency || p.locked) throw new Error("drawLocked");
     if (amount > p.balance) throw new Error("insufficientBalance");
-    if (p.nextPool + amount > p.cap) throw new Error("noCapacity");
+    if (full!.nextPool + amount > full!.cap) throw new Error("noCapacity");
   } else if (action.kind === "withdraw") {
     if (p.emergency || p.locked) throw new Error("drawLocked");
-    if (action.shares > p.shares) throw new Error("invalidAmount");
-    amount = p.shares === 0n ? 0n : (p.active * action.shares) / p.shares;
-  } else if (action.kind === "finalize") amount = p.claimable;
+    if (action.shares > full!.shares) throw new Error("invalidAmount");
+    amount =
+      full!.shares === 0n ? 0n : (full!.active * action.shares) / full!.shares;
+  } else if (action.kind === "finalize") amount = full!.claimable;
   else if (action.kind === "referral") amount = p.referral;
-  else if (action.kind === "cancelSubscription") amount = p.subscription ?? 0n;
-  else if (action.kind === "cancelBatch") amount = p.batch ?? 0n;
+  else if (action.kind === "cancelSubscription")
+    amount = full!.subscription ?? 0n;
+  else if (action.kind === "cancelBatch") amount = full!.batch ?? 0n;
   else if (action.kind === "emergencyExit") {
     if (!p.emergency) throw new Error("unavailable");
-    amount = p.active + p.pending + p.exiting + p.claimable;
+    amount = full!.active + full!.pending + full!.exiting + full!.claimable;
   } else if (action.kind === "revoke") {
     if (!p.allowance) throw new Error("nothingAvailable");
   } else if (action.kind === "claim" || action.kind === "refund") {
     ticketIds(action.ids.join(","));
-    await linked(c, blockNumber, TICKET_NFT);
+    await Promise.all([
+      linked(c, blockNumber, TICKET_NFT),
+      linked(c, blockNumber, LP_MANAGER),
+    ]);
     const pool = await c.readContract({
       address: LP_MANAGER,
       abi: lpAbi,
@@ -559,74 +855,91 @@ async function reviewActionAt(
             blockNumber,
           })
         : [];
-    for (let i = 0; i < action.ids.length; i++) {
-      const id = action.ids[i];
-      const [owner, info] = await Promise.all([
-        c.readContract({
-          address: TICKET_NFT,
-          abi: nftAbi,
-          functionName: "ownerOf",
-          args: [id],
-          blockNumber,
-        }),
-        c.readContract({
-          address: TICKET_NFT,
-          abi: nftAbi,
-          functionName: "getTicketInfo",
-          args: [id],
-          blockNumber,
-        }),
-      ]);
-      if (owner.toLowerCase() !== p.account.toLowerCase())
-        throw new Error("notOwner");
-      const d = await c.readContract({
-        address: JACKPOT,
-        abi: jackpotAbi,
-        functionName: "getDrawingState",
-        args: [info.drawingId],
-        blockNumber,
-      });
-      if (action.kind === "refund") {
-        if (!p.emergency || info.drawingId !== p.draw)
-          throw new Error("unavailable");
-        amount +=
-          BigInt(info.referralScheme) === 0n
+    const infos = await Promise.all(
+      action.ids.map(async (id) => {
+        const [owner, info] = await Promise.all([
+          c.readContract({
+            address: TICKET_NFT,
+            abi: nftAbi,
+            functionName: "ownerOf",
+            args: [id],
+            blockNumber,
+          }),
+          c.readContract({
+            address: TICKET_NFT,
+            abi: nftAbi,
+            functionName: "getTicketInfo",
+            args: [id],
+            blockNumber,
+          }),
+        ]);
+        if (owner.toLowerCase() !== p.account.toLowerCase())
+          throw new Error("notOwner");
+        return info;
+      }),
+    );
+    const drawIds = [...new Set(infos.map((info) => info.drawingId))];
+    const states = new Map(
+      await Promise.all(
+        drawIds.map(
+          async (id) =>
+            [
+              id,
+              await c.readContract({
+                address: JACKPOT,
+                abi: jackpotAbi,
+                functionName: "getDrawingState",
+                args: [id],
+                blockNumber,
+              }),
+            ] as const,
+        ),
+      ),
+    );
+    const payouts = new Map<string, Promise<bigint>>();
+    const amounts = await Promise.all(
+      infos.map(async (info, i) => {
+        const d = states.get(info.drawingId)!;
+        if (action.kind === "refund") {
+          if (!p.emergency || info.drawingId !== p.draw)
+            throw new Error("unavailable");
+          return BigInt(info.referralScheme) === 0n
             ? d.ticketPrice
             : (d.ticketPrice * (10n ** 18n - d.referralFee)) / 10n ** 18n;
-      } else {
+        }
         if (info.drawingId >= p.draw || d.winningTicket === 0n)
           throw new Error("notSettled");
         const tier = tiers[i];
         if (tier === undefined || tier > 11n) throw new Error("notWinner");
-        // Match the calculator and getter used by claimWinnings at this same block.
-        const gross = await c.readContract({
-          address: d.payoutCalculator,
-          abi: payoutAbi,
-          functionName: "getTierPayout",
-          args: [info.drawingId, tier],
-          blockNumber,
-        });
+        const key = `${info.drawingId}:${tier}`;
+        if (!payouts.has(key))
+          payouts.set(
+            key,
+            c.readContract({
+              address: d.payoutCalculator,
+              abi: payoutAbi,
+              functionName: "getTierPayout",
+              args: [info.drawingId, tier],
+              blockNumber,
+            }),
+          );
+        const gross = await payouts.get(key)!;
         if (gross === 0n) throw new Error("notWinner");
-        const noScheme = BigInt(info.referralScheme) === 0n;
         const fee =
-          noScheme && (p.emergency || pool.lpPoolTotal === 0n)
+          BigInt(info.referralScheme) === 0n &&
+          (p.emergency || pool.lpPoolTotal === 0n)
             ? 0n
             : (gross * d.referralWinShare) / 10n ** 18n;
-        amount += gross - fee;
-      }
-    }
+        return gross - fee;
+      }),
+    );
+    amount = amounts.reduce((sum, value) => sum + value, 0n);
   }
   if (action.kind !== "revoke" && amount <= 0n)
     throw new Error("nothingAvailable");
   const calls = actionCalls(action, p.allowance);
-  // Simulate what can execute now. Deposit is simulated again after its approval confirms.
-  await c.call({
-    account: p.account,
-    to: calls[0].to,
-    data: calls[0].data,
-    value: 0n,
-    blockNumber,
-  });
+  // Simulate what can execute now. Deposit and purchase are simulated again after their approval confirms.
+  await simulateAction(c, p.account, action, calls[0], blockNumber);
   if ((await c.getBlock({ blockNumber })).hash !== p.blockHash)
     throw new Error("staleChain");
   return {
@@ -639,6 +952,93 @@ async function reviewActionAt(
     position: p,
     calls,
   };
+}
+
+async function simulateAction(
+  c: Client,
+  account: Address,
+  action: Action,
+  call: Call,
+  blockNumber: bigint,
+) {
+  const context = { account, blockNumber } as const;
+  if (call.kind === "approve" || action.kind === "revoke") {
+    const amount =
+      action.kind === "purchase"
+        ? action.unitPrice * BigInt(action.tickets.length)
+        : action.kind === "deposit"
+          ? action.amount
+          : 0n;
+    return c.simulateContract({
+      ...context,
+      address: USDC,
+      abi: tokenAbi,
+      functionName: "approve",
+      args: [JACKPOT, amount],
+    });
+  }
+  const j = { ...context, address: JACKPOT, abi: jackpotAbi } as const;
+  switch (action.kind) {
+    case "purchase":
+      return c.simulateContract({
+        ...j,
+        functionName: "buyTickets",
+        args: [
+          purchaseTickets(action.tickets).map((t) => ({
+            normals: t.numbers,
+            bonusball: t.bonus,
+          })),
+          action.recipient,
+          [resolveReferrer(action.referrer)],
+          [REFERRAL_UNIT],
+          PURCHASE_SOURCE,
+        ],
+      });
+    case "claim":
+      return c.simulateContract({
+        ...j,
+        functionName: "claimWinnings",
+        args: [action.ids],
+      });
+    case "refund":
+      return c.simulateContract({
+        ...j,
+        functionName: "emergencyRefundTickets",
+        args: [action.ids],
+      });
+    case "deposit":
+      return c.simulateContract({
+        ...j,
+        functionName: "lpDeposit",
+        args: [action.amount],
+      });
+    case "withdraw":
+      return c.simulateContract({
+        ...j,
+        functionName: "initiateWithdraw",
+        args: [action.shares],
+      });
+    case "referral":
+      return c.simulateContract({ ...j, functionName: "claimReferralFees" });
+    case "finalize":
+      return c.simulateContract({ ...j, functionName: "finalizeWithdraw" });
+    case "emergencyExit":
+      return c.simulateContract({ ...j, functionName: "emergencyWithdrawLP" });
+    case "cancelSubscription":
+      return c.simulateContract({
+        ...context,
+        address: SUBSCRIPTION,
+        abi: subscriptionAbi,
+        functionName: "cancelSubscription",
+      });
+    case "cancelBatch":
+      return c.simulateContract({
+        ...context,
+        address: BATCH,
+        abi: batchAbi,
+        functionName: "cancelBatchOrder",
+      });
+  }
 }
 
 export type NativeHistory = {
@@ -741,4 +1141,31 @@ export async function readNativeHistory(
       throw new Error("staleChain");
     return { block: blockNumber, blockHash: b.hash!, rows };
   });
+}
+
+/** Public referral economics for display; signing always performs its own review. */
+export function readReferralTerms(urls: string[], signal?: AbortSignal) {
+  return atNativeEndpoint(
+    urls,
+    async (c) => {
+      const draw = await c.readContract({
+        address: JACKPOT,
+        abi: jackpotAbi,
+        functionName: "currentDrawingId",
+      });
+      const state = await c.readContract({
+        address: JACKPOT,
+        abi: jackpotAbi,
+        functionName: "getDrawingState",
+        args: [draw],
+      });
+      return {
+        draw,
+        prizePool: state.prizePool,
+        purchaseFee: state.referralFee,
+        winShare: state.referralWinShare,
+      };
+    },
+    signal,
+  );
 }

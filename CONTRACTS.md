@@ -5,10 +5,10 @@ Production output MUST contain only static public assets. Locally loaded assets 
 Observations MUST retain actual block numbers and timestamps in the data model. Retail screens omit routine infrastructure metadata. Refresh failures MUST retain only the same account's prior observation with a concise stale/unavailable state. Unknown MUST NOT mean zero. Display data never authorizes signing.
 
 @cc [label:product] preview-truth
-Local selections and simulations MUST NOT imply a recorded purchase, claim or deployed custody contract. Purchase submission is disabled. Unrelated supported wallet actions remain available.
+Local selections and simulations MUST NOT imply a recorded purchase, claim or deployed custody contract. A purchase is recorded only by a confirmed receipt for the reviewed Jackpot call. Unrelated supported wallet actions remain available.
 
 @cc [label:security] intentional-wallet-actions
-Wallet requests MUST follow an explicit reviewed action, revalidate account and chain, and use canonical allowlisted calls with fresh simulation. Refresh, URL restoration and read adapters MUST NOT request signatures or transactions.
+Wallet requests MUST follow an explicit reviewed action, revalidate account and chain, and use canonical allowlisted calls with fresh simulation. Ticket purchases approve the exact order total for Jackpot, then call Jackpot.buyTickets for the connected account with the valid explicit inviter, otherwise the Club default. Immutable orders MUST preserve that single beneficiary through approval, reload and normal draw rollover. Receipt events MUST establish the actual purchased draw and tickets. All journal mutations MUST share a cross-tab lock; unresolved records and known hashes MUST survive concurrent recovery. Refresh, URL restoration and read adapters MUST NOT request signatures or transactions.
 
 @cc [label:product] durable-navigation
 Safe view state MUST round-trip through the URL. Back/Forward and refresh restore views without replaying actions or silently replacing intentional links with local preferences.
