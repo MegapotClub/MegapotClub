@@ -38,10 +38,19 @@
           <option value="confirmed">Confirm</option>
           <option value="reverted">Revert</option>
           <option value="ambiguous">Lose response</option>
+          <option value="unavailable">Wallet unavailable</option>
         </select></label
       >
       <button id="reset-fixture">Reset synthetic activity</button>
       <button id="switch-account">Switch synthetic account</button>
+      <label
+        >Selected wallet chain<select id="wallet-chain">
+          <option value="0x2105">Base</option>
+          <option value="0x1">Ethereum</option>
+        </select></label
+      >
+      <output id="target-audit"></output><output id="share-audit"></output
+      ><output id="delay-audit"></output>
       <output id="platform"></output>
       <label
         >Balance fixture<select id="balance-state">
@@ -67,6 +76,77 @@
       // The read-only snapshot verifier uses its bundled pin independently of action pins.
       (await import("/src/snapshot.json")).default.codeHash = qaCodeHash;
       const parameters = new URLSearchParams(location.search);
+      const shareMode = parameters.get("shareFixture");
+      // Synthetic share/clipboard adapters never transmit data. They inspect the exact
+      // generated PNG and caption when native APIs are unavailable in an HTTP preview.
+      if (shareMode && shareMode !== "unsupported") {
+        const inspect = async (file, action, text = "") => {
+          const bitmap = await createImageBitmap(file),
+            canvas = document.createElement("canvas");
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext("2d");
+          context.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const { default: decodeQR } = await import("qr/decode.js");
+          let qr;
+          try {
+            qr = decodeQR(
+              context.getImageData(0, 0, canvas.width, canvas.height),
+            );
+          } catch (error) {
+            qr = `Decode failed: ${error.message}`;
+          }
+          document.getElementById("share-audit").textContent = JSON.stringify({
+            adapter: true,
+            action,
+            type: file.type,
+            bytes: file.size,
+            width: canvas.width,
+            height: canvas.height,
+            text,
+            qr,
+          });
+        };
+        if (!window.ClipboardItem)
+          window.ClipboardItem = class {
+            constructor(data) {
+              this.data = data;
+              this.types = Object.keys(data);
+            }
+            getType(type) {
+              return Promise.resolve(this.data[type]);
+            }
+          };
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            write: async (items) => {
+              if (shareMode === "failure")
+                throw new Error("Synthetic clipboard failure");
+              await inspect(await items[0].getType("image/png"), "copy");
+            },
+            writeText: async (text) => {
+              document.getElementById("share-audit").textContent =
+                JSON.stringify({ adapter: true, action: "copyText", text });
+            },
+          },
+        });
+        Object.defineProperty(navigator, "canShare", {
+          configurable: true,
+          value: ({ files }) => files?.[0]?.type === "image/png",
+        });
+        Object.defineProperty(navigator, "share", {
+          configurable: true,
+          value: async ({ files, text }) => {
+            if (shareMode === "cancel")
+              throw new DOMException("Synthetic cancellation", "AbortError");
+            if (shareMode === "failure")
+              throw new Error("Synthetic share failure");
+            await inspect(files[0], "share", text);
+          },
+        });
+      }
       const nativeLocks = Boolean(navigator.locks);
       // HTTP previews do not expose Web Locks. This in-memory test adapter is scoped
       // to the non-signing fixture; the production app still requires native locks.
@@ -132,9 +212,19 @@
       };
       const seenBalances = [],
         claimStates = [];
+      let delayFirstSeen;
       const drawModes = [],
         auditStart = performance.now();
       new MutationObserver(() => {
+        const delayed = [
+          ...document.querySelectorAll('#root [role="status"]'),
+        ].some((el) => /Updates.*temporarily delayed/.test(el.textContent));
+        if (delayed && delayFirstSeen === undefined)
+          delayFirstSeen = Math.round(performance.now() - auditStart);
+        document.getElementById("delay-audit").textContent = JSON.stringify({
+          delayed,
+          firstSeenMs: delayFirstSeen ?? null,
+        });
         const claimState =
           document.querySelector(".claim-loading")?.textContent?.trim() ||
           document.querySelector(".review-card")?.textContent?.trim() ||
@@ -256,6 +346,9 @@
       };
       const key = "club-qa:wallet";
       let currentAccount = rpc.account;
+      let selectedChain =
+        parameters.get("walletChain") === "1" ? "0x1" : "0x2105";
+      document.getElementById("wallet-chain").value = selectedChain;
       const calls = JSON.parse(sessionStorage.getItem("club-qa:calls") || "[]");
       const events = new Map();
       const render = () => {
@@ -281,9 +374,24 @@
             return localStorage.getItem(key) === "authorized"
               ? [currentAccount]
               : [];
-          if (method === "eth_chainId") return "0x2105";
+          if (method === "eth_chainId") return selectedChain;
+          if (method === "wallet_switchEthereumChain") {
+            selectedChain = params[0].chainId;
+            document.getElementById("wallet-chain").value = selectedChain;
+            for (const listener of events.get("chainChanged") || [])
+              listener(selectedChain);
+            return null;
+          }
           if (method === "eth_sendTransaction") {
+            document.getElementById("target-audit").textContent =
+              JSON.stringify({
+                chainId: params[0].chainId,
+                selectedChain,
+                to: params[0].to,
+              });
             const outcome = outcomeControl.value;
+            if (outcome === "unavailable")
+              throw new Error("Synthetic wallet unavailable");
             if (
               !["confirmed", "reverted", "ambiguous", "rejected"].includes(
                 outcome,
@@ -312,6 +420,11 @@
         },
       };
       window.ethereum = provider;
+      document.getElementById("wallet-chain").onchange = (event) => {
+        selectedChain = event.target.value;
+        for (const listener of events.get("chainChanged") || [])
+          listener(selectedChain);
+      };
       document.getElementById("switch-account").onclick = () => {
         currentAccount =
           currentAccount === rpc.account

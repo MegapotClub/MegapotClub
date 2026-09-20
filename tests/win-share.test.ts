@@ -1,3 +1,4 @@
+import decodeQR from "qr/decode.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -5,6 +6,8 @@ import {
   winAmount,
   winCardSvg,
   xWinUrl,
+  shareJackpot,
+  winQr,
 } from "../src/winShare.ts";
 import { isFreeTicketTier } from "../src/prizeDisplay.ts";
 import { groupClaimedWins } from "../src/claimedWins.ts";
@@ -61,4 +64,25 @@ test("free-ticket grouping follows prize tiers, not a one-dollar amount heuristi
   assert.equal(group.freeTickets, 2);
   assert.equal(group.total, 3000002n);
   assert.equal(group.wins.length, 3);
+});
+
+test("the QR carries the exact inviter path and current jackpots use conservative display amounts", () => {
+  const matrix = winQr({ amount: "3020000", account }),
+    scale = 5,
+    width = matrix.length * scale;
+  const data = new Uint8Array(width * width * 4);
+  for (let y = 0; y < width; y++)
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4,
+        value = matrix[Math.floor(y / scale)][Math.floor(x / scale)] ? 0 : 255;
+      data.set([value, value, value, 255], offset);
+    }
+  assert.equal(
+    decodeQR({ width, height: width, data }),
+    invitationUrl(account),
+  );
+  assert.equal(shareJackpot("220567999999", "en"), "$220,000+");
+  assert.equal(shareJackpot("1", "en"), null);
+  for (const raw of [null, "0", "-1", "1.1", (2n ** 256n).toString()])
+    assert.equal(shareJackpot(raw, "en"), null);
 });
