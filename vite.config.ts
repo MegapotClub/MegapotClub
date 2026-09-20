@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { manifestAuth } from "./tests/browser/manifestAuth.ts";
 import { exportPreview } from "./tests/browser/exportPreview.ts";
+import { coinbaseBrowser } from "./scripts/coinbase-browser.ts";
 
 export default defineConfig(({ mode }) => {
   const previewHost = loadEnv(mode, process.cwd(), "DEV_").DEV_ALLOWED_HOST;
@@ -60,19 +61,19 @@ export default defineConfig(({ mode }) => {
       host: "0.0.0.0",
       port: 4173,
       strictPort: true,
-      allowedHosts: previewHost ? [previewHost] : [],
+      allowedHosts: ["terminal.local", ...(previewHost ? [previewHost] : [])],
     },
     optimizeDeps: {
       // The browser fixture imports the exact installed SDK encoder directly.
       // Include its CJS dependencies in the same optimizer used by the connector.
       include: ["club-test/coinbase-signer"],
-      rolldownOptions: { transform },
+      rolldownOptions: { transform, plugins: [coinbaseBrowser()] },
     },
     build: {
       target: "es2022",
       sourcemap: false,
       cssCodeSplit: true,
-      rolldownOptions: { transform },
+      rolldownOptions: { transform, plugins: [coinbaseBrowser()] },
     },
   };
 });

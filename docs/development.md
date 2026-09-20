@@ -26,3 +26,5 @@ The optional `npm run contracts:fork` requires a historical-proof-capable `CLUB_
 See [external services](services.md), [architecture](architecture.md) and [release procedure](release.md).
 
 After a production build, `/tests/browser/manifest-auth/` verifies the generated manifest link against synthetic cookie authentication. Its control link reproduces the missing-credentials failure. This development-only fixture never accesses real session credentials.
+
+`coinbaseBrowser()` in `scripts/coinbase-browser.ts` narrowly adapts WalletLink's mobile presentation in both dependency optimization and production. It rejects incompatible SDK versions/source hashes. Desktop platform hints suppress mobile links; touch phones and desktop-mode iPadOS retain the SDK handoff. The relay rechecks the device at dispatch in case emulation ended after connection. `tests/coinbase-mobile.test.ts` bundles the actual installed relay and navigation code with only external publication replaced. Full platform/touch spoofing cannot be distinguished from an actual mobile device. Never change transaction payloads or globally patch browser APIs to suppress this UI.

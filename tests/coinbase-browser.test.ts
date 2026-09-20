@@ -28,6 +28,7 @@ async function sdk(inject: boolean) {
     input: "tests/fixtures/coinbaseWalletBoundary.ts",
     platform: "browser",
     tsconfig: false,
+    plugins: config!.config.build?.rolldownOptions?.plugins,
     resolve: { alias: config!.config.resolve!.alias as Record<string, string> },
     transform: {
       ...(inject ? transform : {}),
