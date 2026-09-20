@@ -12,6 +12,7 @@ import { JACKPOT } from "../../src/config.ts";
 export function purchaseLogs(
   action: Extract<Action, { kind: "purchase" }>,
   draw = action.drawId,
+  firstTicketId = draw * 1000n + 100n,
 ): Log[] {
   const scheme = keccak256(
     encodeAbiParameters(parseAbiParameters("address[], uint256[]"), [
@@ -41,7 +42,7 @@ export function purchaseLogs(
     }) as Log["topics"],
     data: encodeAbiParameters(
       parseAbiParameters("uint256, uint8[], uint8, bytes32"),
-      [draw * 1000n + 100n + BigInt(i), t.numbers, t.bonus, scheme],
+      [firstTicketId + BigInt(i), t.numbers, t.bonus, scheme],
     ),
   }));
   const amount = action.unitPrice * BigInt(action.tickets.length);

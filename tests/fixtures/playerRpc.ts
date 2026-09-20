@@ -2,6 +2,8 @@
 import {
   decodeFunctionData,
   encodeFunctionResult,
+  encodeAbiParameters,
+  encodeEventTopics,
   parseAbi,
   keccak256,
   type Address,
@@ -34,6 +36,7 @@ const WAD = 10n ** 18n;
 // Unique signatures merged across chain.ts, playerReads.ts and native.ts.
 export const qaPlayerAbi = parseAbi([
   "function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)",
+  "function getEthBalance(address) view returns (uint256)",
   "function currentDrawingId() view returns (uint256)",
   "function getDrawingState(uint256) view returns ((uint256 prizePool,uint256 ticketPrice,uint256 edgePerTicket,uint256 referralWinShare,uint256 referralFee,uint256 globalTicketsBought,uint256 lpEarnings,uint256 drawingTime,uint256 winningTicket,uint8 ballMax,uint8 bonusballMax,address payoutCalculator,bool jackpotLock))",
   "function getUnpackedTicket(uint256,uint256) view returns (uint8[] normals,uint8 bonusball)",
@@ -104,10 +107,12 @@ export const clubReferrer =
 export function createPlayerRpcFixture(options: FixtureOptions = {}) {
   const account = options.account ?? fixtureAddress;
   const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000);
-  const blockNumber = options.blockNumber ?? 70_000_000n;
+  let blockNumber = options.blockNumber ?? 70_000_000n;
   const currentDraw = options.currentDraw ?? 175n;
   let balance = options.usdcBalance ?? 25_000_000n,
-    allowance = options.usdcAllowance ?? 0n;
+    allowance = options.usdcAllowance ?? 0n,
+    referralFees = 3_000_000n;
+  const claimed = new Set<bigint>();
   const purchased = new Map<
     bigint,
     {
@@ -133,6 +138,7 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
   const owns = (address: unknown) =>
     String(address).toLowerCase() === account.toLowerCase();
   const ticketInfo = (id: bigint) => {
+    if (claimed.has(id)) throw new Error("Fixture ticket burned after claim");
     const bought = purchased.get(id);
     if (bought)
       return {
@@ -219,6 +225,7 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
         result =
           owns(args![0]) && id >= currentDraw - 6n && id <= currentDraw
             ? [1n, 2n]
+                .filter((i) => !claimed.has(id * 1000n + i))
                 .map((i) => ({
                   ticketId: id * 1000n + i,
                   ticket: ticketInfo(id * 1000n + i),
@@ -270,10 +277,13 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
         result = options.emergency ?? false;
         break;
       case "referralFees":
-        result = owns(args![0]) ? 3_000_000n : 0n;
+        result = owns(args![0]) ? referralFees : 0n;
         break;
       case "balanceOf":
         result = owns(args![0]) ? balance : 0n;
+        break;
+      case "getEthBalance":
+        result = owns(args![0]) ? 10n ** 16n : 0n;
         break;
       case "allowance":
         result =
@@ -340,7 +350,10 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
         break;
       case "claimWinnings":
         for (const id of args![0] as bigint[]) {
-          if (ticketInfo(id).drawingId >= currentDraw || id % 1000n !== 1n)
+          if (
+            ticketInfo(id).drawingId >= currentDraw ||
+            (id % 1000n !== 1n && !(options.rankedTickets && id % 1000n === 2n))
+          )
             throw new Error("Fixture ticket not claimable");
         }
         return "0x";
@@ -429,7 +442,7 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
           result = "0xf4240";
           break;
         case "eth_getTransactionCount":
-          result = "0x0";
+          result = owns(params[0]) ? hex(transactions.size) : "0x0";
           break;
         case "eth_getTransactionByHash":
           result = transactions.get(String(params[0]))?.tx ?? null;
@@ -523,10 +536,18 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
     const decoded = decodeFunctionData({ abi: qaPlayerAbi, data: input.data });
     const hash =
       `0x${(transactions.size + 1).toString(16).padStart(64, "0")}` as Hex;
+    // The transaction lands after the reviewed block and has two confirmations.
+    blockNumber += 3n;
     let logs: Record<string, unknown>[] = [];
     if (outcome !== "reverted") {
-      if (decoded.functionName === "approve") allowance = decoded.args[1];
-      else if (decoded.functionName === "buyTickets") {
+      if (decoded.functionName === "approve") {
+        if (
+          input.to.toLowerCase() !== qaAddresses.usdc.toLowerCase() ||
+          decoded.args[0].toLowerCase() !== qaAddresses.jackpot.toLowerCase()
+        )
+          throw new Error("Fixture approval target mismatch");
+        allowance = decoded.args[1];
+      } else if (decoded.functionName === "buyTickets") {
         const buy = decodeFunctionData({ abi: jackpotAbi, data: input.data });
         if (buy.functionName !== "buyTickets")
           throw new Error("Fixture purchase mismatch");
@@ -542,8 +563,12 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
           drawId: currentDraw,
         };
         call(input.to, input.data);
-        balance -= BigInt(action.tickets.length) * action.unitPrice;
-        logs = purchaseLogs(action).map((l) => ({
+        const total = BigInt(action.tickets.length) * action.unitPrice;
+        balance -= total;
+        allowance -= total;
+        const firstTicketId =
+          currentDraw * 1000n + 100n + BigInt(purchased.size);
+        logs = purchaseLogs(action, currentDraw, firstTicketId).map((l) => ({
           ...l,
           blockNumber: hex(blockNumber - 2n),
           logIndex: hex(l.logIndex),
@@ -551,7 +576,7 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
           transactionHash: hash,
         }));
         action.tickets.forEach((t, i) => {
-          const id = currentDraw * 1000n + 100n + BigInt(i);
+          const id = firstTicketId + BigInt(i);
           purchased.set(id, {
             drawingId: currentDraw,
             packedTicket: id,
@@ -560,6 +585,45 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
             bonusball: t.bonus,
           });
         });
+      } else if (decoded.functionName === "claimWinnings") {
+        if (input.to.toLowerCase() !== qaAddresses.jackpot.toLowerCase())
+          throw new Error("Fixture claim target mismatch");
+        call(input.to, input.data);
+        logs = decoded.args[0].map((id, index) => {
+          const drawingId = ticketInfo(id).drawingId;
+          const tier = id % 1000n === 1n ? 1 : 6;
+          const payout = (tiers[tier] * 9n) / 10n;
+          claimed.add(id);
+          balance += payout;
+          return {
+            address: qaAddresses.jackpot,
+            blockHash,
+            blockNumber: hex(blockNumber - 2n),
+            logIndex: hex(index),
+            transactionIndex: "0x0",
+            transactionHash: hash,
+            removed: false,
+            topics: encodeEventTopics({
+              abi: jackpotAbi,
+              eventName: "TicketWinningsClaimed",
+              args: { userAddress: input.from, drawingId },
+            }),
+            data: encodeAbiParameters(
+              [
+                { type: "uint256" },
+                { type: "uint256" },
+                { type: "bool" },
+                { type: "uint256" },
+              ],
+              [id, BigInt(Math.floor(tier / 2)), tier % 2 === 1, payout],
+            ),
+          };
+        });
+      } else if (decoded.functionName === "claimReferralFees") {
+        if (input.to.toLowerCase() !== qaAddresses.jackpot.toLowerCase())
+          throw new Error("Fixture referral target mismatch");
+        balance += referralFees;
+        referralFees = 0n;
       } else throw new Error("Unsupported synthetic wallet action");
     }
     const tx = {
@@ -603,7 +667,9 @@ export function createPlayerRpcFixture(options: FixtureOptions = {}) {
   return {
     account,
     timestamp,
-    blockNumber,
+    get blockNumber() {
+      return blockNumber;
+    },
     currentDraw,
     counters,
     respond,

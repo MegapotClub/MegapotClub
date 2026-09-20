@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Club retail integration fixture</title>
+    <style>
+      #fixture > * {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+      }
+    </style>
     <script src="/theme-init.js"></script>
   </head>
   <body>
@@ -26,6 +33,17 @@
       <button id="hide">Hide fixture bar</button><output id="requests"></output
       ><output id="rpc"></output>
       <label
+        >Wallet outcome<select id="wallet-outcome">
+          <option value="rejected">Reject</option>
+          <option value="confirmed">Confirm</option>
+          <option value="reverted">Revert</option>
+          <option value="ambiguous">Lose response</option>
+        </select></label
+      >
+      <button id="reset-fixture">Reset synthetic activity</button>
+      <button id="switch-account">Switch synthetic account</button>
+      <output id="platform"></output>
+      <label
         >Balance fixture<select id="balance-state">
           <option value="normal">$25 observed</option>
           <option value="loading">Delay chain reads</option>
@@ -46,6 +64,25 @@
       );
       const { REGISTRY } = await import("/src/native.ts");
       for (const pin of REGISTRY) pin.hash = qaCodeHash;
+      // The read-only snapshot verifier uses its bundled pin independently of action pins.
+      (await import("/src/snapshot.json")).default.codeHash = qaCodeHash;
+      const parameters = new URLSearchParams(location.search);
+      const nativeLocks = Boolean(navigator.locks);
+      // HTTP previews do not expose Web Locks. This in-memory test adapter is scoped
+      // to the non-signing fixture; the production app still requires native locks.
+      // ?nativeLocks keeps the adapter disabled to verify fail-closed behavior.
+      if (!nativeLocks && !parameters.has("nativeLocks")) {
+        const { createLocks } = await import("../fixtures/locks.ts");
+        const host = window.parent;
+        host.clubFixtureLocks ??= createLocks();
+        Object.defineProperty(navigator, "locks", {
+          value: host.clubFixtureLocks,
+        });
+      }
+      document.getElementById("platform").textContent =
+        `Secure context: ${isSecureContext}; native Web Locks: ${nativeLocks}; fixture lock adapter: ${!nativeLocks && !parameters.has("nativeLocks")}`;
+      const outcomeControl = document.getElementById("wallet-outcome");
+      outcomeControl.value = parameters.get("walletOutcome") || "rejected";
       const balanceMode =
         new URLSearchParams(location.search).get("balance") || "normal";
       document.getElementById("balance-state").value = balanceMode;
@@ -65,16 +102,48 @@
             ? 100_000_000n
             : 0n,
       });
-      const seenBalances = [], claimStates = [];
+      const ledgerKey = "club-qa:ledger";
+      const ledger = JSON.parse(sessionStorage.getItem(ledgerKey) || "[]");
+      for (const entry of ledger) {
+        try {
+          rpc.simulateSend(entry.input, entry.outcome);
+        } catch {}
+      }
+      document.getElementById("reset-fixture").onclick = async () => {
+        const { JOURNAL_KEY } = await import("/src/transactions.ts");
+        await navigator.locks.request("megapot-club:journal-write", () => {
+          const entries = JSON.parse(localStorage.getItem(JOURNAL_KEY) || "[]");
+          localStorage.setItem(
+            JOURNAL_KEY,
+            JSON.stringify(
+              entries.filter(
+                (e) =>
+                  ![
+                    rpc.account.toLowerCase(),
+                    "0x2222222222222222222222222222222222222222",
+                  ].includes(e.account?.toLowerCase()),
+              ),
+            ),
+          );
+        });
+        sessionStorage.removeItem(ledgerKey);
+        sessionStorage.removeItem("club-qa:calls");
+        location.reload();
+      };
+      const seenBalances = [],
+        claimStates = [];
       const drawModes = [],
         auditStart = performance.now();
       new MutationObserver(() => {
-        const claimState = document.querySelector('.claim-loading')?.textContent?.trim() ||
-          document.querySelector('.review-card')?.textContent?.trim() ||
-          document.querySelector('.checkout-actions')?.textContent?.trim() || '';
+        const claimState =
+          document.querySelector(".claim-loading")?.textContent?.trim() ||
+          document.querySelector(".review-card")?.textContent?.trim() ||
+          document.querySelector(".checkout-actions")?.textContent?.trim() ||
+          "";
         if (claimState && claimStates.at(-1) !== claimState) {
           claimStates.push(claimState);
-          document.getElementById('claim-audit').textContent = JSON.stringify(claimStates);
+          document.getElementById("claim-audit").textContent =
+            JSON.stringify(claimStates);
         }
         const text =
           document.querySelector(".retail-balance-amount")?.textContent ??
@@ -167,9 +236,12 @@
                   { once: true },
                 );
               });
-            if (new URLSearchParams(location.search).has('slowClaim') &&
-                body.method === 'eth_call' && body.params?.[0]?.data?.startsWith('0x1bf0ade0'))
-              await new Promise(resolve => setTimeout(resolve, 1800));
+            if (
+              new URLSearchParams(location.search).has("slowClaim") &&
+              body.method === "eth_call" &&
+              body.params?.[0]?.data?.startsWith("0x1bf0ade0")
+            )
+              await new Promise((resolve) => setTimeout(resolve, 1800));
             const reply = rpc.respondBody(body);
             if (body.method === "eth_getBlockByNumber" && reply.result)
               reply.result.timestamp =
@@ -183,6 +255,7 @@
         return actualFetch(input, init);
       };
       const key = "club-qa:wallet";
+      let currentAccount = rpc.account;
       const calls = JSON.parse(sessionStorage.getItem("club-qa:calls") || "[]");
       const events = new Map();
       const render = () => {
@@ -206,13 +279,25 @@
             localStorage.setItem(key, "authorized");
           if (method === "eth_accounts" || method === "eth_requestAccounts")
             return localStorage.getItem(key) === "authorized"
-              ? ["0x1111111111111111111111111111111111111111"]
+              ? [currentAccount]
               : [];
           if (method === "eth_chainId") return "0x2105";
           if (method === "eth_sendTransaction") {
-            const outcome = new URLSearchParams(location.search).get("walletOutcome") || "rejected";
-            if (!["confirmed", "reverted", "ambiguous", "rejected"].includes(outcome)) throw new Error("Invalid synthetic outcome");
-            return rpc.simulateSend(params[0], outcome);
+            const outcome = outcomeControl.value;
+            if (
+              !["confirmed", "reverted", "ambiguous", "rejected"].includes(
+                outcome,
+              )
+            )
+              throw new Error("Invalid synthetic outcome");
+            try {
+              return rpc.simulateSend(params[0], outcome);
+            } finally {
+              if (outcome !== "rejected") {
+                ledger.push({ input: params[0], outcome });
+                sessionStorage.setItem(ledgerKey, JSON.stringify(ledger));
+              }
+            }
           }
           throw Object.assign(new Error("Fixture never signs or sends"), {
             code: -32601,
@@ -227,6 +312,14 @@
         },
       };
       window.ethereum = provider;
+      document.getElementById("switch-account").onclick = () => {
+        currentAccount =
+          currentAccount === rpc.account
+            ? "0x2222222222222222222222222222222222222222"
+            : rpc.account;
+        for (const listener of events.get("accountsChanged") || [])
+          listener([currentAccount]);
+      };
       const announce = () =>
         window.dispatchEvent(
           new CustomEvent("eip6963:announceProvider", {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Club narrow viewport verification</title>
+    <title>Club viewport verification</title>
     <style>
       body {
         font: 14px system-ui;
@@ -14,6 +14,7 @@
       header {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 12px;
         margin-bottom: 12px;
       }
@@ -46,10 +47,12 @@
           <option value="/tests/browser/retail.html">
             Non-signing wallet fixture
           </option>
+          <option value="/dist/">Production export</option>
         </select></label
       ><label
         >Screen<select id="route">
           <option value="draw">Draw</option>
+          <option value="play">Play</option>
           <option value="tickets">Tickets</option>
           <option value="tickets?draw=175">Active tickets (fixture)</option>
           <option value="winnings">Balance</option>
@@ -62,6 +65,13 @@
         >Theme<select id="theme">
           <option value="dark">Dark</option>
           <option value="light">Light</option>
+        </select></label
+      >
+      <label
+        >Viewport<select id="viewport">
+          <option value="390">390 and 320 pixels</option>
+          <option value="448">448 × 998 pixels</option>
+          <option value="1280">1280 × 900 pixels</option>
         </select></label
       >
       <button id="hide-fixtures">Hide fixture bars</button>
@@ -78,6 +88,13 @@
     </main>
     <script>
       const frames = [...document.querySelectorAll("iframe")];
+      document.querySelector("#viewport").onchange = (e) => {
+        const width = Number(e.target.value);
+        frames[0].width = width;
+        frames[0].style.height = `${width === 448 ? 998 : width === 1280 ? 900 : 844}px`;
+        frames[0].previousElementSibling.textContent = `${width} × ${parseInt(frames[0].style.height)}`;
+        frames[1].parentElement.hidden = width !== 390;
+      };
       document.querySelector("#hide-fixtures").onclick = () =>
         frames.forEach((f) => {
           const bar = f.contentDocument.getElementById("fixture");
