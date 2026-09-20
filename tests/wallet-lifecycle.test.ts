@@ -1,6 +1,12 @@
+import {
+  encodeAbiParameters,
+  encodeEventTopics,
+  parseAbiParameters,
+} from "viem";
 import { test, mock, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Review } from "../src/native.ts";
+import { walletRequestRefused, walletError } from "../src/wallet.ts";
 import * as realNative from "../src/native.ts";
 import { createLocks } from "./fixtures/locks.ts";
 import { JACKPOT } from "../src/config.ts";
@@ -14,6 +20,11 @@ let revision = 1,
   providerChangesDuringGas = false,
   providerChanged = false;
 let quote: Review;
+let discoveredDuringTarget = false;
+let eventCount = 0;
+let blockTimestamp = Math.floor(Date.now() / 1000);
+let transactionReads = 0;
+let eventQueries: unknown[] = [];
 const storage = new Map<string, string>();
 const globals = ["localStorage", "window", "navigator"].map(
   (key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const,
@@ -48,23 +59,46 @@ const client = {
   },
   getGasPrice: async () => 1n,
   getTransactionCount: async () => 7,
-  getTransaction: async () => ({
-    nonce: 9,
-    from: account,
-    to: JACKPOT,
-    input: "0x30fcc737",
-    value: 0n,
-  }),
+  getTransaction: async () => {
+    transactionReads++;
+    return {
+      nonce: 9,
+      from: account,
+      to: JACKPOT,
+      input: "0x30fcc737",
+      value: 0n,
+    };
+  },
   waitForTransactionReceipt: async () => new Promise(() => {}),
   getTransactionReceipt: async () => ({
     status: "success",
     blockNumber: 100n,
     blockHash: hash,
+    logs: eventCount
+      ? Array.from({ length: eventCount }, (_, i) => ({
+          address: JACKPOT,
+          topics: encodeEventTopics({
+            abi: realNative.jackpotAbi,
+            eventName: "TicketWinningsClaimed",
+            args: { userAddress: account, drawingId: 1n },
+          }),
+          data: encodeAbiParameters(
+            parseAbiParameters("uint256,uint256,bool,uint256"),
+            [BigInt(i + 1), 3n, false, 1_000_000n],
+          ),
+        }))
+      : [],
   }),
+  getContractEvents: async (args: unknown) => {
+    eventQueries.push(args);
+    return Array.from({ length: eventCount }, () => ({
+      transactionHash: hash,
+    }));
+  },
   getBlockNumber: async () => 102n,
   getBlock: async () => ({
     hash,
-    timestamp: BigInt(Math.floor(Date.now() / 1000)),
+    timestamp: BigInt(blockTimestamp),
   }),
 };
 mock.module("../src/native.ts", {
@@ -92,13 +126,29 @@ mock.module("../src/wallet.ts", {
       if (who !== account || rev !== revision) throw new Error("walletChanged");
       return providerChanged ? replacementProvider : provider;
     },
-    walletError: (e: { code?: number }) =>
-      e?.code === 4001 ? "rejected" : "walletFailed",
+    prepareWalletTarget: async (who: string, rev: number) => {
+      if (discoveredDuringTarget) {
+        const old = journals().find((j) => j.status === "unknown")!;
+        await writeJournal({ ...old, hash, status: "pending" });
+      }
+      if (who !== account || rev !== revision) throw new Error("walletChanged");
+      return providerChanged ? replacementProvider : provider;
+    },
+    assertWalletTarget: async (who: string, rev: number) => {
+      if (who !== account || rev !== revision) throw new Error("walletChanged");
+      return providerChanged ? replacementProvider : provider;
+    },
+    walletRequestRefused,
+    walletError,
   },
 });
-const { submitReview, journals, reconcile } = await import(
-  "../src/transactions.ts"
-);
+const {
+  submitReview,
+  journals,
+  reconcile,
+  writeJournal,
+  findTransactionCandidates,
+} = await import("../src/transactions.ts");
 beforeEach(() => {
   storage.clear();
   storage.set("megapot-club:transactions:v1", "[]");
@@ -108,6 +158,11 @@ beforeEach(() => {
   stateChangesDuringGas = false;
   providerChangesDuringGas = false;
   providerChanged = false;
+  discoveredDuringTarget = false;
+  eventCount = 0;
+  transactionReads = 0;
+  eventQueries = [];
+  blockTimestamp = Math.floor(Date.now() / 1000);
   quote = {
     account,
     action: { kind: "finalize" },
@@ -144,7 +199,7 @@ test("an explicit submission sends once, records the actual wallet-selected nonc
   );
   assert.equal(sent.length, 1);
 });
-test("account/chain change during gas estimation prevents the wallet request", async () => {
+test("identity change during gas estimation prevents the wallet request", async () => {
   stateChangesDuringGas = true;
   await assert.rejects(
     submitReview(["https://base.example"], quote, 1),
@@ -255,4 +310,151 @@ test("an explicit wallet hash can reconcile an ambiguous request without request
   await reconcile(["https://base.example"], entry, hash);
   assert.equal(journals()[0].status, "confirmed");
   assert.equal(sent.length, 1);
+});
+
+test("refused wallet requests release only the new reservation and permit a new explicit click", async () => {
+  for (const code of [4100, 4200, -32002, -32601, -32602]) {
+    walletFailure = { cause: { code } };
+    await assert.rejects(submitReview(["https://base.example"], quote, 1));
+    assert.equal(journals().at(-1)?.status, "rejected");
+  }
+  walletFailure = null;
+  assert.equal(
+    (await submitReview(["https://base.example"], quote, 1)).status,
+    "pending",
+  );
+});
+test("an explicit identical claim retry preserves its ambiguous predecessor; pending hashes cannot retry", async () => {
+  quote = {
+    ...quote,
+    action: { kind: "claim", ids: [1n] },
+    calls: [{ ...quote.calls[0], kind: "claim" }],
+  };
+  walletFailure = new Error("relay unavailable");
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /ambiguousClaim/,
+  );
+  const first = journals()[0];
+  await assert.rejects(
+    submitReview(
+      ["https://base.example"],
+      { ...quote, calls: [{ ...quote.calls[0], data: "0x12345678" }] },
+      1,
+    ),
+    /unresolvedTransaction/,
+  );
+  walletFailure = null;
+  const second = await submitReview(["https://base.example"], quote, 1);
+  assert.equal(second.retryOf, first.id);
+  assert.equal(journals()[0].status, "unknown");
+  assert.equal(journals()[1].status, "pending");
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /unresolvedTransaction/,
+  );
+  assert.equal(sent.length, 2);
+});
+
+test("claim recovery groups thirty ticket events into one candidate and tolerates device-clock skew", async () => {
+  quote = {
+    ...quote,
+    action: {
+      kind: "claim",
+      ids: Array.from({ length: 30 }, (_, i) => BigInt(i + 1)),
+    },
+    calls: [{ ...quote.calls[0], kind: "claim" }],
+  };
+  walletFailure = new Error("response lost");
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /ambiguousClaim/,
+  );
+  const first = journals()[0];
+  await writeJournal({
+    ...first,
+    id: "uncertain-retry",
+    retryOf: first.id,
+    createdAt: Date.now() + 1,
+    nonce: first.nonce + 3,
+  });
+  eventCount = 30;
+  blockTimestamp -= 600;
+  await findTransactionCandidates(["https://base.example"], first);
+  assert.equal(transactionReads, 1);
+  assert.equal(
+    (eventQueries[0] as { eventName: string }).eventName,
+    "TicketWinningsClaimed",
+  );
+  assert.deepEqual(journals()[0].recovery?.candidates, [hash]);
+  await reconcile(["https://base.example"], journals()[0], hash);
+  assert.equal(journals()[0].status, "confirmed");
+  assert.equal(journals()[0].claimReceipt?.ticketIds.length, 30);
+  const retry = journals().find((j) => j.id === "uncertain-retry")!;
+  assert.equal(retry.status, "superseded");
+  assert.equal(retry.hash, undefined);
+  assert.equal(retry.resolvedBy, hash);
+  assert.equal(sent.length, 1);
+});
+test("a hash discovered during claim retry preparation prevents the second wallet handoff", async () => {
+  quote = {
+    ...quote,
+    action: { kind: "claim", ids: [1n] },
+    calls: [{ ...quote.calls[0], kind: "claim" }],
+  };
+  walletFailure = new Error("response lost");
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /ambiguousClaim/,
+  );
+  discoveredDuringTarget = true;
+  walletFailure = null;
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /claimAlreadySent/,
+  );
+  assert.equal(sent.length, 1);
+  assert.equal(journals()[0].hash, hash);
+  assert.equal(journals()[1].status, "rejected");
+});
+
+test("a synchronous wallet hash remains a dispatched transaction", async (t) => {
+  t.mock.method(
+    provider,
+    "request",
+    (() => hash) as unknown as typeof provider.request,
+  );
+  const entry = await submitReview(["https://base.example"], quote, 1);
+  assert.equal(entry.hash, hash);
+  assert.equal(journals()[0].status, "pending");
+});
+test("a retry hash arriving after the claim was fulfilled resumes real receipt tracking", async () => {
+  quote = {
+    ...quote,
+    action: { kind: "claim", ids: [1n] },
+    calls: [{ ...quote.calls[0], kind: "claim" }],
+  };
+  walletFailure = new Error("response lost");
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /ambiguousClaim/,
+  );
+  const first = journals()[0];
+  const retry = {
+    ...first,
+    id: "waiting-retry",
+    status: "wallet" as const,
+    retryOf: first.id,
+  };
+  await writeJournal(retry);
+  eventCount = 1;
+  await reconcile(["https://base.example"], first, hash);
+  assert.equal(journals().find((j) => j.id === retry.id)?.status, "superseded");
+  const lateHash = `0x${"cd".repeat(32)}` as const;
+  await writeJournal({ ...retry, hash: lateHash, status: "pending" });
+  assert.equal(journals().find((j) => j.id === retry.id)?.status, "pending");
+  assert.equal(journals().find((j) => j.id === retry.id)?.hash, lateHash);
+  await writeJournal({ ...retry, status: "superseded", resolvedBy: hash });
+  assert.equal(journals().find((j) => j.id === retry.id)?.hash, lateHash);
+  assert.equal(journals().find((j) => j.id === retry.id)?.status, "pending");
 });

@@ -6262,6 +6262,7 @@ input[type="range"] {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  margin-top: 14px;
 }
 .win-share-button {
   gap: 8px;
@@ -6404,4 +6405,48 @@ input[type="range"] {
 .invite-steps p {
   margin-bottom: 0;
   color: var(--muted);
+}
+
+/* Claim review belongs to the dialog, with no second page-like frame. */
+.modal .review-card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.modal .review-amount {
+  margin: 0 0 20px;
+  color: var(--ink);
+  font-size: 32px;
+  font-weight: 800;
+}
+.win-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.win-share-actions > button {
+  flex: 1;
+  justify-content: center;
+  white-space: nowrap;
+}
+.win-share-caption {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 0.8rem 0;
+}
+.win-share-caption p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.win-share-caption .icon-button {
+  flex: 0 0 auto;
 }

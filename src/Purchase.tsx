@@ -21,7 +21,7 @@ import { clubCopy, errorCopy } from "./clubCopy.ts";
 import { EXPLORER } from "./config.ts";
 import { Modal } from "./Modal.tsx";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { switchBase, useWallet } from "./wallet.ts";
+import { useWallet } from "./wallet.ts";
 import { reviewAction, type Review } from "./native.ts";
 import {
   submitReview,
@@ -196,23 +196,21 @@ export function Purchase({
   const reviewValid =
     review !== null &&
     accountMatches &&
-    wallet.chainId === 8453 &&
     wallet.revision === reviewRevision &&
     review.account.toLowerCase() === wallet.account?.toLowerCase();
-  const stage =
-    !wallet.account || wallet.chainId !== 8453
-      ? "connect"
-      : done
-        ? "done"
-        : entry && ["wallet", "pending", "unknown"].includes(entry.status)
-          ? "sent"
-          : entry && ["reverted", "replaced"].includes(entry.status)
-            ? "failed"
-            : !reviewValid
-              ? "review"
-              : review!.calls[0].kind === "approve"
-                ? "approve"
-                : "confirm";
+  const stage = !wallet.account
+    ? "connect"
+    : done
+      ? "done"
+      : entry && ["wallet", "pending", "unknown"].includes(entry.status)
+        ? "sent"
+        : entry && ["reverted", "replaced"].includes(entry.status)
+          ? "failed"
+          : !reviewValid
+            ? "review"
+            : review!.calls[0].kind === "approve"
+              ? "approve"
+              : "confirm";
   useEffect(() => {
     if (
       route.checkout &&
@@ -733,28 +731,12 @@ export function Purchase({
                     {error}
                   </p>
                 )}
-                {!wallet.account ? (
-                  <button
-                    className="button button-primary full-width"
-                    onClick={connectFromCheckout}
-                  >
-                    {c("connect")}
-                  </button>
-                ) : (
-                  <button
-                    className="button button-primary full-width"
-                    disabled={busy}
-                    onClick={() => {
-                      setBusy(true);
-                      setError("");
-                      switchBase(urls)
-                        .catch((e) => setError(errorCopy(locale, e)))
-                        .finally(() => setBusy(false));
-                    }}
-                  >
-                    {c("switchBase")}
-                  </button>
-                )}
+                <button
+                  className="button button-primary full-width"
+                  onClick={connectFromCheckout}
+                >
+                  {c("connect")}
+                </button>
               </>
             )}
             {stage === "done" && (

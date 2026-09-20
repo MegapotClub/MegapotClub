@@ -5,9 +5,17 @@ import {
   toHex,
   type Address,
   type Hex,
+  type RpcTransactionRequest,
 } from "viem";
 import { useEffect, useState } from "react";
-import { assertWallet, walletError } from "./wallet.ts";
+import {
+  assertWallet,
+  prepareWalletTarget,
+  assertWalletTarget,
+  walletRequestRefused,
+  walletError,
+  type WalletProvider,
+} from "./wallet.ts";
 import { atEvmEndpoint, evmClient, type EvmClient } from "./evmClient.ts";
 import { reviewVault, type VaultReview } from "./vaults.ts";
 import { localId } from "./localId.ts";
@@ -41,6 +49,8 @@ export type Journal = {
   recovery?: { fromBlock: string; nextBlock: string; candidates: Hex[] };
   kind: Call["kind"] | "vaults";
   hash?: Hex;
+  retryOf?: string;
+  resolvedBy?: Hex;
   nonce: number;
   nonceConfirmed?: boolean;
   createdAt: number;
@@ -51,7 +61,8 @@ export type Journal = {
     | "reverted"
     | "replaced"
     | "unknown"
-    | "rejected";
+    | "rejected"
+    | "superseded";
 };
 type Purchase = Extract<Action, { kind: "purchase" }>;
 export type StoredPurchase = Omit<Purchase, "unitPrice" | "drawId"> & {
@@ -75,6 +86,7 @@ const statuses = [
   "replaced",
   "unknown",
   "rejected",
+  "superseded",
 ];
 const kinds = [
   "deposit",
@@ -228,6 +240,18 @@ export function parseJournal(value: unknown): Journal[] {
         nextBlock: v.recovery.nextBlock,
         candidates: [...new Set(v.recovery.candidates)],
       };
+    if (
+      typeof v.retryOf === "string" &&
+      v.retryOf.length > 0 &&
+      v.retryOf.length <= 80 &&
+      v.retryOf !== v.id &&
+      v.kind === "claim"
+    )
+      result.retryOf = v.retryOf;
+    if (v.status === "superseded") {
+      if (v.kind !== "claim" || v.hash || !hashValue(v.resolvedBy)) continue;
+      result.resolvedBy = v.resolvedBy;
+    }
     const receipt = v.purchaseReceipt;
     if (
       receipt &&
@@ -297,7 +321,16 @@ export async function writeJournal(
   await navigator.locks.request("megapot-club:journal-write", async () => {
     const previous = journals();
     const current = previous.find((x) => x.id === entry.id);
-    if (current && !UNRESOLVED.has(current.status)) return;
+    if (
+      current &&
+      !UNRESOLVED.has(current.status) &&
+      !(
+        current.status === "superseded" &&
+        entry.hash &&
+        ["pending", "confirmed", "reverted", "replaced"].includes(entry.status)
+      )
+    )
+      return;
     if (
       current &&
       !sameCall(current, {
@@ -443,7 +476,9 @@ export async function reconcile(
         if (
           !sameCall(entry, tx) ||
           tx.nonce < entry.nonce ||
-          Number(receiptBlock.timestamp) * 1000 < entry.createdAt - 30_000
+          (entry.recovery
+            ? receipt.blockNumber < BigInt(entry.recovery.fromBlock)
+            : Number(receiptBlock.timestamp) * 1000 < entry.createdAt - 30_000)
         )
           throw new Error("wrongReplacement");
       }
@@ -486,6 +521,23 @@ export async function reconcile(
         ? { claimReceipt: claimReceipt(receipt.logs, entry.account) }
         : {}),
     });
+    if (state === "confirmed" && entry.kind === "claim") {
+      // A successful exact claim proves the tickets were paid once. A lost retry
+      // may have reverted without an event; retain that uncertain attempt without
+      // describing its own transaction as confirmed or blocking later purchases.
+      for (const related of journals()) {
+        if (
+          related.id !== entry.id &&
+          related.kind === "claim" &&
+          related.chainId === entry.chainId &&
+          related.account.toLowerCase() === entry.account.toLowerCase() &&
+          !related.hash &&
+          UNRESOLVED.has(related.status) &&
+          sameCall(related, tx)
+        )
+          await write({ ...related, status: "superseded", resolvedBy: hash });
+      }
+    }
   };
   return entry.chainId === 1
     ? atEvmEndpoint(1, urls, inspect)
@@ -494,14 +546,18 @@ export async function reconcile(
 
 /** A lost response has no trustworthy hash or wallet-selected nonce. Find candidates without
  * treating an unrelated same-account call as proof, and never clear/resubmit automatically. */
-export async function findPurchaseCandidates(
+export async function findTransactionCandidates(
   urls: string[],
   entry: Journal,
 ): Promise<void> {
   if (
     entry.hash ||
-    entry.kind !== "purchase" ||
-    !entry.purchase ||
+    !(
+      entry.kind === "claim" ||
+      (entry.kind === "purchase" && entry.purchase)
+    ) ||
+    entry.chainId !== 8453 ||
+    entry.to.toLowerCase() !== JACKPOT.toLowerCase() ||
     !entry.recovery
   )
     return;
@@ -509,20 +565,41 @@ export async function findPurchaseCandidates(
     const head = await c.getBlockNumber(),
       from = BigInt(entry.recovery!.nextBlock);
     if (head < from + 1n) return;
-    const to = from + 1999n < head - 1n ? from + 1999n : head - 1n;
-    const logs = await c.getContractEvents({
-      address: JACKPOT,
-      abi: jackpotAbi,
-      eventName: "TicketOrderProcessed",
-      args: { buyer: entry.account, recipient: entry.account },
-      fromBlock: from,
-      toBlock: to,
-      strict: true,
-    });
+    let to = from + 1999n < head - 1n ? from + 1999n : head - 1n;
+    const readLogs = () =>
+      entry.kind === "claim"
+        ? c.getContractEvents({
+            address: JACKPOT,
+            abi: jackpotAbi,
+            eventName: "TicketWinningsClaimed",
+            args: { userAddress: entry.account },
+            fromBlock: from,
+            toBlock: to,
+            strict: true,
+          })
+        : c.getContractEvents({
+            address: JACKPOT,
+            abi: jackpotAbi,
+            eventName: "TicketOrderProcessed",
+            args: { buyer: entry.account, recipient: entry.account },
+            fromBlock: from,
+            toBlock: to,
+            strict: true,
+          });
+    let hashes: Hex[] = [];
+    // At most eleven range probes, twenty transaction lookups. Multiple ticket
+    // events from one claim consume one lookup; a busy range is bisected.
+    for (let probe = 0; probe < 11; probe++) {
+      hashes = [
+        ...new Set((await readLogs()).map((log) => log.transactionHash)),
+      ];
+      if (hashes.length <= 20) break;
+      if (to === from) return; // Exceptional same-block volume retains manual recovery.
+      to = from + (to - from) / 2n;
+    }
+    if (hashes.length > 20) return;
     const candidates = new Set(entry.recovery!.candidates);
-    // Stay bounded even if the account has many unrelated purchases in the scanned range.
-    if (logs.length > 20) return;
-    for (const hash of [...new Set(logs.map((log) => log.transactionHash))]) {
+    for (const hash of hashes) {
       const tx = await c.getTransaction({ hash });
       if (
         tx.from.toLowerCase() === entry.account.toLowerCase() &&
@@ -561,7 +638,19 @@ export function useTransactionRecovery(urls: string[]) {
     queryFn: async () => {
       for (const entry of pending.slice(0, 5)) {
         if (entry.hash) await reconcile(urls, entry).catch(() => {});
-        else await findPurchaseCandidates(urls, entry).catch(() => {});
+        else {
+          await findTransactionCandidates(urls, entry).catch(() => {});
+          const latest = journals().find((j) => j.id === entry.id);
+          for (const hash of latest?.recovery?.candidates ?? []) {
+            await reconcile(urls, latest!, hash).catch(() => {});
+            if (
+              !UNRESOLVED.has(
+                journals().find((j) => j.id === entry.id)?.status ?? "",
+              )
+            )
+              break;
+          }
+        }
       }
       return Date.now();
     },
@@ -570,6 +659,65 @@ export function useTransactionRecovery(urls: string[]) {
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: false,
+  });
+}
+
+/** A second explicit click may retry only the identical, NFT-consuming claim.
+ * Unknown attempts remain tracked; purchases and known pending hashes never qualify. */
+export function canRetryClaim(entry: Journal, review: Review): boolean {
+  const call = review.calls[0];
+  return (
+    review.action.kind === "claim" &&
+    call.kind === "claim" &&
+    call.to.toLowerCase() === JACKPOT.toLowerCase() &&
+    entry.kind === "claim" &&
+    entry.chainId === 8453 &&
+    entry.account.toLowerCase() === review.account.toLowerCase() &&
+    !entry.hash &&
+    ["wallet", "unknown"].includes(entry.status) &&
+    sameCall(entry, { to: call.to, input: call.data, value: call.value })
+  );
+}
+
+async function dispatchWallet(
+  entry: Journal,
+  provider: WalletProvider,
+  revision: number,
+  request: RpcTransactionRequest & { chainId: Hex },
+  signal?: AbortSignal,
+  validate: (entries: Journal[]) => void = () => {},
+) {
+  return navigator.locks.request("megapot-club:journal-write", async () => {
+    if (
+      (await assertWalletTarget(entry.account, revision, entry.chainId)) !==
+      provider
+    )
+      throw new Error("walletChanged");
+    if (signal?.aborted) throw new Error("reviewCancelled");
+    const entries = journals();
+    const reservation = entries.find((j) => j.id === entry.id);
+    if (
+      !reservation ||
+      reservation.status !== "wallet" ||
+      reservation.hash ||
+      !journalStorageAvailable()
+    )
+      throw new Error("unresolvedTransaction");
+    validate(entries);
+    // No await separates eligibility from handing off the exact target-bound call.
+    let response: Promise<unknown>;
+    try {
+      response = Promise.resolve(
+        provider.request({
+          method: "eth_sendTransaction",
+          params: [request],
+        }),
+      );
+    } catch (error) {
+      response = Promise.reject(error);
+    }
+    void response.catch(() => {});
+    return { response };
   });
 }
 
@@ -587,15 +735,15 @@ export async function submitReview(
 ): Promise<Journal> {
   if (submitting) throw new Error("walletPending");
   const run = async (): Promise<Journal> => {
-    if (
-      journals().some(
-        (x) =>
-          x.account.toLowerCase() === review.account.toLowerCase() &&
-          x.chainId === 8453 &&
-          ["wallet", "unknown", "pending"].includes(x.status),
-      )
-    )
+    const unresolved = journals().filter(
+      (x) =>
+        x.account.toLowerCase() === review.account.toLowerCase() &&
+        x.chainId === 8453 &&
+        UNRESOLVED.has(x.status),
+    );
+    if (unresolved.some((x) => !canRetryClaim(x, review)))
       throw new Error("unresolvedTransaction");
+    const retryOf = unresolved.at(-1)?.id;
     const retail = ["purchase", "claim", "refund", "referral"].includes(
       review.action.kind,
     );
@@ -642,7 +790,14 @@ export async function submitReview(
     ]);
     if (fresh.position.ether < gas * gasPrice)
       throw new Error("insufficientGas");
-    if ((await assertWallet(review.account, walletRevision)) !== w)
+    if (
+      (await prepareWalletTarget(
+        review.account,
+        walletRevision,
+        8453,
+        urls,
+      )) !== w
+    )
       throw new Error("walletChanged");
     if (signal?.aborted) throw new Error("reviewCancelled");
     let entry: Journal = {
@@ -657,6 +812,7 @@ export async function submitReview(
         ? { purchase: storedPurchase(fresh.action) }
         : {}),
       nonce,
+      ...(retryOf ? { retryOf } : {}),
       recovery: {
         fromBlock: fresh.block.toString(),
         nextBlock: fresh.block.toString(),
@@ -665,30 +821,49 @@ export async function submitReview(
       createdAt: Date.now(),
       status: "wallet",
     };
+    let handoff: { response: Promise<unknown> };
     try {
       await write(entry, true);
-      if (signal?.aborted) throw new Error("reviewCancelled");
-      if ((await assertWallet(review.account, walletRevision)) !== w)
-        throw new Error("walletChanged");
-      if (signal?.aborted) throw new Error("reviewCancelled");
+      handoff = await dispatchWallet(
+        entry,
+        w,
+        walletRevision,
+        {
+          from: entry.account,
+          to: entry.to,
+          data: call.data,
+          value: toHex(call.value),
+          chainId: toHex(entry.chainId),
+          gas: toHex(gas + gas / 5n),
+        },
+        signal,
+        (entries) => {
+          if (
+            unresolved.some((old) => {
+              const current = entries.find((j) => j.id === old.id);
+              return !current || !canRetryClaim(current, fresh);
+            })
+          )
+            throw new Error("claimAlreadySent");
+          if (
+            entries.some(
+              (j) =>
+                j.id !== entry.id &&
+                j.account.toLowerCase() === entry.account.toLowerCase() &&
+                j.chainId === entry.chainId &&
+                UNRESOLVED.has(j.status) &&
+                !canRetryClaim(j, fresh),
+            )
+          )
+            throw new Error("unresolvedTransaction");
+        },
+      );
     } catch (error) {
       await write({ ...entry, status: "rejected" }).catch(() => {});
       throw error;
     }
     try {
-      const hash = await w.request({
-        method: "eth_sendTransaction",
-        params: [
-          {
-            from: review.account,
-            to: call.to,
-            data: call.data,
-            value: "0x0",
-            chainId: "0x2105",
-            gas: toHex(gas + gas / 5n),
-          },
-        ],
-      });
+      const hash = await handoff.response;
       if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash))
         throw new Error("invalidHash");
       entry = { ...entry, hash: hash as Hex, status: "pending" };
@@ -726,9 +901,15 @@ export async function submitReview(
         .catch(() => {});
       return entry;
     } catch (error) {
-      const rejected = walletError(error) === "rejected";
-      await write({ ...entry, status: rejected ? "rejected" : "unknown" });
-      throw new Error(rejected ? "rejected" : "ambiguousTransaction");
+      const refused = walletRequestRefused(error);
+      await write({ ...entry, status: refused ? "rejected" : "unknown" });
+      throw new Error(
+        refused
+          ? walletError(error)
+          : call.kind === "claim"
+            ? "ambiguousClaim"
+            : "ambiguousTransaction",
+      );
     }
   };
   submitting = true;
@@ -810,8 +991,12 @@ export async function submitVaultReview(
     if (fresh.state.ether < call.value + (gas + gas / 5n) * price)
       throw new Error("insufficientGas");
     if (
-      (await assertWallet(review.account, revision, review.chainId)) !==
-      provider
+      (await prepareWalletTarget(
+        review.account,
+        revision,
+        review.chainId,
+        urls,
+      )) !== provider
     )
       throw new Error("walletChanged");
     if (signal?.aborted) throw new Error("reviewChanged");
@@ -828,33 +1013,29 @@ export async function submitVaultReview(
       createdAt: Date.now(),
       status: "wallet",
     };
+    let handoff: { response: Promise<unknown> };
     try {
       await write(entry, true);
-      if (signal?.aborted) throw new Error("reviewCancelled");
-      if (
-        (await assertWallet(review.account, revision, review.chainId)) !==
-        provider
-      )
-        throw new Error("walletChanged");
-      if (signal?.aborted) throw new Error("reviewCancelled");
+      handoff = await dispatchWallet(
+        entry,
+        provider,
+        revision,
+        {
+          from: entry.account,
+          to: entry.to,
+          data: call.data,
+          value: toHex(call.value),
+          chainId: toHex(entry.chainId),
+          gas: toHex(gas + gas / 5n),
+        },
+        signal,
+      );
     } catch (error) {
       await write({ ...entry, status: "rejected" }).catch(() => {});
       throw error;
     }
     try {
-      const hash = await provider.request({
-        method: "eth_sendTransaction",
-        params: [
-          {
-            from: entry.account,
-            to: entry.to,
-            data: call.data,
-            value: toHex(call.value),
-            chainId: toHex(entry.chainId),
-            gas: toHex(gas + gas / 5n),
-          },
-        ],
-      });
+      const hash = await handoff.response;
       if (typeof hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(hash))
         throw new Error("invalidHash");
       entry = { ...entry, hash: hash as Hex, status: "pending" };
@@ -891,9 +1072,9 @@ export async function submitVaultReview(
         .catch(() => {});
       return entry;
     } catch (e) {
-      const rejected = walletError(e) === "rejected";
-      await write({ ...entry, status: rejected ? "rejected" : "unknown" });
-      throw new Error(rejected ? "rejected" : "ambiguousTransaction");
+      const refused = walletRequestRefused(e);
+      await write({ ...entry, status: refused ? "rejected" : "unknown" });
+      throw new Error(refused ? walletError(e) : "ambiguousTransaction");
     }
   };
   submitting = true;

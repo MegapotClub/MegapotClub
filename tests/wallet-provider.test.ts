@@ -115,7 +115,14 @@ test("a real wagmi connector owns connection, chain switching and disconnect", a
   );
   await session.switchChain(1, ["https://ethereum.invalid"]);
   assert.equal(session.current().chainId, 1);
-  await assert.rejects(session.assertWallet(who, revision), /walletChanged/);
+  assert.equal(session.current().revision, revision);
+  assert.equal(await session.assertWallet(who, revision), a);
+  await assert.rejects(
+    session.assertTarget(who, revision, 8453),
+    /walletTargetFailed/,
+  );
+  await session.prepareTarget(who, revision, 8453, ["https://base.invalid"]);
+  assert.equal(a.chain, "0x2105");
   await disconnect(config);
   assert.equal(session.current().account, null);
   assert.equal(
@@ -147,7 +154,7 @@ test("same-address provider replacement invalidates a previously reviewed operat
   assert.equal(await session.assertWallet(who, session.current().revision), b);
   session.stop();
 });
-test("provider account and chain reads cannot silently disagree with the reviewed identity", async () => {
+test("passive identity ignores wallet selection; the execution target remains enforced", async () => {
   const { a, config, session } = fixture();
   await connect(config, { connector: config.connectors[0] });
   const revision = session.current().revision;
@@ -155,7 +162,11 @@ test("provider account and chain reads cannot silently disagree with the reviewe
   await assert.rejects(session.assertWallet(who, revision), /walletChanged/);
   a.account = who;
   a.chain = "0x1";
-  await assert.rejects(session.assertWallet(who, revision), /walletChanged/);
+  assert.equal(await session.assertWallet(who, revision), a);
+  await assert.rejects(
+    session.assertTarget(who, revision, 8453),
+    /walletTargetFailed/,
+  );
   session.stop();
 });
 test("legacy injected replacement with the same address and chain requires reconnect", async () => {
@@ -229,4 +240,77 @@ test("wrapped wallet rejection and already-pending errors preserve recovery sema
     walletError(new Error("arbitrary untrusted text")),
     "walletFailed",
   );
+});
+
+test("a refused or lying internal switch never produces a target-ready provider", async () => {
+  for (const refusal of [true, false]) {
+    const { a, config, session } = fixture();
+    await connect(config, { connector: config.connectors[0] });
+    const rev = session.current().revision;
+    a.chain = "0x1";
+    const original = a.response.bind(a);
+    a.response = async (method, params) => {
+      if (method === "wallet_switchEthereumChain") {
+        if (refusal) throw { code: 4001 };
+        a.emit("chainChanged", "0x2105");
+        return null;
+      }
+      return original(method, params);
+    };
+    await assert.rejects(
+      session.prepareTarget(who, rev, 8453, ["https://base.invalid"]),
+    );
+    assert.equal(a.requests.includes("eth_sendTransaction"), false);
+    session.stop();
+  }
+});
+
+test("provider replacement during the final target read cannot pass the signing boundary", async () => {
+  const ethereum = Object.getOwnPropertyDescriptor(window, "ethereum");
+  const { a, b, config, session } = fixture(true);
+  try {
+    Object.defineProperty(window, "ethereum", { configurable: true, value: a });
+    await connect(config, { connector: config.connectors[0] });
+    let release!: (value: unknown) => void;
+    const original = a.response.bind(a);
+    a.response = async (method, params) =>
+      method === "eth_chainId"
+        ? new Promise((resolve) => {
+            release = resolve;
+          })
+        : original(method, params);
+    const pending = session.assertTarget(who, session.current().revision, 8453);
+    while (!release) await new Promise((resolve) => setImmediate(resolve));
+    Object.defineProperty(window, "ethereum", { configurable: true, value: b });
+    release("0x2105");
+    await assert.rejects(pending, /walletChanged/);
+    assert.equal(b.requests.includes("eth_sendTransaction"), false);
+  } finally {
+    session.stop();
+    ethereum
+      ? Object.defineProperty(window, "ethereum", ethereum)
+      : Reflect.deleteProperty(window, "ethereum");
+  }
+});
+
+test("a selected-chain event during target validation invalidates only that handoff", async () => {
+  const { a, config, session } = fixture();
+  await connect(config, { connector: config.connectors[0] });
+  const revision = session.current().revision;
+  let release!: (value: unknown) => void;
+  const original = a.response.bind(a);
+  a.response = async (method, params) =>
+    method === "eth_chainId"
+      ? new Promise((resolve) => {
+          release = resolve;
+        })
+      : original(method, params);
+  const pending = session.assertTarget(who, revision, 8453);
+  while (!release) await new Promise((resolve) => setImmediate(resolve));
+  a.chain = "0x1";
+  a.emit("chainChanged", a.chain);
+  release("0x2105");
+  await assert.rejects(pending, /walletTargetFailed/);
+  assert.equal(session.current().revision, revision);
+  session.stop();
 });

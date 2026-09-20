@@ -110,6 +110,17 @@ mock.module("../src/wallet.ts", {
         throw new Error("walletChanged");
       return providerChanged ? replacementProvider : provider;
     },
+    prepareWalletTarget: async (who: string, rev: number, chain: number) => {
+      if (who !== account || rev !== revision || chain !== fresh.chainId)
+        throw new Error("walletChanged");
+      return providerChanged ? replacementProvider : provider;
+    },
+    assertWalletTarget: async (who: string, rev: number, chain: number) => {
+      if (who !== account || rev !== revision || chain !== fresh.chainId)
+        throw new Error("walletChanged");
+      return providerChanged ? replacementProvider : provider;
+    },
+    walletRequestRefused: () => false,
     walletError: () => "walletFailed",
   },
 });

@@ -6,7 +6,6 @@ import { ExternalLink } from "lucide-react";
 import type { Locale } from "./i18n.ts";
 import { clubCopy, errorCopy } from "./clubCopy.ts";
 import { chainExplorer, type VaultChain } from "./evmClient.ts";
-import { switchChain, useWallet } from "./wallet.ts";
 import { WalletButton } from "./WalletButton.tsx";
 import {
   useTransactions,
@@ -16,37 +15,14 @@ import {
 
 export function WalletConnection({
   locale,
-  urls,
-  chainId = 8453,
 }: {
   locale: Locale;
   urls: string[];
   chainId?: VaultChain;
 }) {
-  const wallet = useWallet(),
-    c = clubCopy(locale),
-    [error, setError] = useState("");
   return (
     <div className="wallet-connect">
       <WalletButton locale={locale} />
-      {wallet.account && wallet.chainId !== chainId && (
-        <button
-          className="button button-outline"
-          onClick={() => {
-            setError("");
-            void switchChain(chainId, urls).catch((e) =>
-              setError(errorCopy(locale, e)),
-            );
-          }}
-        >
-          {c("switchBase").replace("Base", chainId === 1 ? "Ethereum" : "Base")}
-        </button>
-      )}
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
     </div>
   );
 }
@@ -122,13 +98,13 @@ export function TransactionActivity({
               </small>
             </div>
             <div className="transaction-actions">
-              {entry.hash && (
+              {(entry.hash || entry.resolvedBy) && (
                 <>
                   <a
                     className="icon-button"
                     aria-label={playCopy(locale)("viewTransaction")}
                     title={playCopy(locale)("viewTransaction")}
-                    href={`${chainExplorer(chainId)}/tx/${entry.hash}`}
+                    href={`${chainExplorer(chainId)}/tx/${entry.hash ?? entry.resolvedBy}`}
                     target="_blank"
                     rel="noreferrer"
                   >

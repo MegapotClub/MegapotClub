@@ -153,7 +153,6 @@ function VaultReviewCard({
   useEffect(() => () => submission.current?.abort(), []);
   const matches =
     wallet.revision === revision.current &&
-    wallet.chainId === review.chainId &&
     wallet.account?.toLowerCase() === review.account.toLowerCase();
   return (
     <section
@@ -411,8 +410,7 @@ export function VaultWorkspace({
     historyGeneration = useRef(0),
     draftKey = `megapot-club:vault-draft:${product}:${tab === "redeem" ? "redeem" : "deposit"}:v2`;
   const urls = chainId === 1 ? ethereumUrls : baseUrls;
-  const canReview =
-    !!wallet.account && wallet.chainId === chainId && ready && urls.length > 0;
+  const canReview = !!wallet.account && ready && urls.length > 0;
   const follow = (next: Route) => (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (normalNavigation(e)) {
       e.preventDefault();
@@ -478,7 +476,7 @@ export function VaultWorkspace({
     setBusy(false);
     generation.current++;
     historyGeneration.current++;
-  }, [wallet.chainId, wallet.revision, tab, ethereumUrls, baseUrls]);
+  }, [wallet.revision, tab, ethereumUrls, baseUrls]);
   useEffect(() => {
     setRequest(route.request ?? "");
     setOperationId(route.request ?? "");
@@ -518,14 +516,7 @@ export function VaultWorkspace({
       if (!document.hidden) void refresh();
     }, 60_000);
     return () => clearInterval(timer);
-  }, [
-    wallet.account,
-    wallet.chainId,
-    wallet.revision,
-    product,
-    ethereumUrls,
-    baseUrls,
-  ]);
+  }, [wallet.account, wallet.revision, product, ethereumUrls, baseUrls]);
   function invalidateReview() {
     generation.current++;
     setBusy(false);

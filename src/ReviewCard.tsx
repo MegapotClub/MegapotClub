@@ -1,3 +1,5 @@
+import { Modal } from "./Modal.tsx";
+import { useDelayedStatus } from "./useDelayedStatus.ts";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, ShieldCheck } from "lucide-react";
@@ -35,6 +37,7 @@ export function ReviewCard({
     "claim-review",
     initialReview.account.toLowerCase(),
     initialReview.createdAt,
+    wallet.revision,
     urls,
   ];
   const refreshed = useQuery({
@@ -43,7 +46,10 @@ export function ReviewCard({
       reviewAction(urls, initialReview.account, initialReview.action, signal),
     initialData: initialReview,
     initialDataUpdatedAt: initialReview.createdAt,
-    enabled: claiming && !busy && wallet.revision === revision.current,
+    enabled:
+      claiming &&
+      !busy &&
+      wallet.account?.toLowerCase() === initialReview.account.toLowerCase(),
     staleTime: 30_000,
     gcTime: 60_000,
     refetchInterval: 30_000,
@@ -55,32 +61,36 @@ export function ReviewCard({
   const call = review.calls[0];
   const matches =
     wallet.account?.toLowerCase() === review.account.toLowerCase() &&
-    wallet.chainId === 8453 &&
     !review.position.contractWallet &&
-    wallet.revision === revision.current;
-  return (
+    (claiming || wallet.revision === revision.current);
+  const delayed = useDelayedStatus(refreshed.isError);
+  const content = (
     <section
       className="review-card"
-      aria-labelledby="review-title"
+      aria-labelledby={claiming ? undefined : "review-title"}
       tabIndex={-1}
       ref={(el) => {
-        if (el && !el.dataset.focused) {
+        if (!claiming && el && !el.dataset.focused) {
           el.dataset.focused = "true";
           el.focus();
           el.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
       }}
     >
-      <div className="section-top">
-        <div className="eyebrow">
-          <ShieldCheck size={18} />
-          {c("review")}
-        </div>
-        <button className="text-button" onClick={onClose} disabled={busy}>
-          {c("close")}
-        </button>
-      </div>
-      <h2 id="review-title">{c(call.kind)}</h2>
+      {!claiming && (
+        <>
+          <div className="section-top">
+            <div className="eyebrow">
+              <ShieldCheck size={18} />
+              {c("review")}
+            </div>
+            <button className="text-button" onClick={onClose} disabled={busy}>
+              {c("close")}
+            </button>
+          </div>
+          <h2 id="review-title">{c(call.kind)}</h2>
+        </>
+      )}
       <p className="review-amount">
         {claiming ? "$" : ""}
         {money(
@@ -95,7 +105,7 @@ export function ReviewCard({
       )}
       {review.action.kind === "deposit" && <p>{c("depositHelp")}</p>}
       {review.action.kind === "withdraw" && <p>{c("exitHelp")}</p>}
-      {claiming && refreshed.isError && (
+      {claiming && delayed && (
         <p className="inline-notice" role="status">
           {c("claimRefreshDelayed")}
         </p>
@@ -144,7 +154,7 @@ export function ReviewCard({
               const sent = await submitReview(
                 urls,
                 review,
-                revision.current,
+                claiming ? wallet.revision : revision.current,
                 controller.signal,
                 (fresh) => queryClient.setQueryData(queryKey, fresh),
               );
@@ -169,5 +179,12 @@ export function ReviewCard({
         </p>
       )}
     </section>
+  );
+  return claiming ? (
+    <Modal title={c(call.kind)} closeLabel={c("close")} onClose={onClose}>
+      {content}
+    </Modal>
+  ) : (
+    content
   );
 }

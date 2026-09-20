@@ -6,7 +6,7 @@ import { hydrate } from "@wagmi/core";
 import { reconnect } from "wagmi/actions";
 import type { Config, Connector, CreateConnectorFn } from "wagmi";
 import { base, mainnet } from "wagmi/chains";
-import { APP_NAME, DEFAULT_RPC_URLS } from "./config.ts";
+import { APP_NAME, ORIGIN, DEFAULT_RPC_URLS } from "./config.ts";
 
 const resetKey = "megapot-club:skip-wallet-restore";
 export function requestWalletReset() {
@@ -94,6 +94,8 @@ export function createWalletConfig() {
     [{ groupName: "Popular", wallets: [coinbaseWallet, injectedWallet] }],
     {
       appName: APP_NAME,
+      appUrl: ORIGIN,
+      appIcon: `${ORIGIN}/icons/icon-512.png`,
       // This required upstream option is unused by both selected connectors.
       // An empty value also makes accidental WalletConnect configuration fail.
       projectId: "",
@@ -133,6 +135,7 @@ export function createWalletConfig() {
     : Promise.resolve(storage.getItem("store")).catch(() => null);
   const config = createConfig({
     chains: [base, mainnet],
+    syncConnectedChain: false,
     batch: { multicall: { wait: 20, batchSize: 8192 } },
     connectors: connectors.map(passiveCoinbase),
     multiInjectedProviderDiscovery: true,
