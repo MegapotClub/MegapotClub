@@ -73,7 +73,8 @@ const guard = await h.deploy("PriceGuard", [
   cfg.ethFeed,
   cfg.usdcFeed,
   cfg.sequencer,
-  BigInt(cfg.feedMaxAge),
+  BigInt(cfg.ethFeedMaxAge),
+  BigInt(cfg.usdcFeedMaxAge),
   BigInt(cfg.sequencerGrace),
 ]);
 const risk = [

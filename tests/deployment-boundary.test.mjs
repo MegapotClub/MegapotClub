@@ -44,7 +44,8 @@ let config,
   codes = new Map(),
   slots = new Map(),
   aggregators = new Map(),
-  childAddresses = new Map();
+  childAddresses = new Map(),
+  feedAges = new Map();
 const absent = () => ({
   walk: (predicate) => {
     const e = { name: "ContractFunctionRevertedError" };
@@ -84,7 +85,7 @@ const client = (id) => ({
           ? 0n
           : 100_000_000n,
         now - 7200n,
-        now - 1n,
+        now - (feedAges.get(address.toLowerCase()) ?? 1n),
         1n,
       ];
     if (functionName === "WETH9") return cfg.weth;
@@ -169,7 +170,8 @@ function chain(id, start) {
     deployer: A(start),
     nonce: "7",
     swapFee: "500",
-    feedMaxAge: "3600",
+    ethFeedMaxAge: "7200",
+    usdcFeedMaxAge: "90000",
     sequencerGrace: id === 1 ? "0" : "3600",
     risk: {
       borrowBps: "2500",
@@ -239,6 +241,7 @@ beforeEach(() => {
   slots = new Map();
   aggregators = new Map();
   childAddresses = new Map();
+  feedAges = new Map();
 });
 test("unsigned plan has deterministic CREATE addresses, correct chain-local nonce sequences and exact zero value", () => {
   assert.equal(plan.transactions.length, 9);
@@ -437,6 +440,14 @@ test("preflight requires actual flash-loan availability and reviewed factory/min
   wrongMinter = false;
   wrongFactory = true;
   await assert.rejects(preflight(plan), /factory\/pool identity changed/);
+});
+test("preflight holds each price feed to its own maximum age", async () => {
+  // A USDC/USD heartbeat round routinely lands seconds after its 24-hour heartbeat.
+  for (const id of [1, 8453])
+    feedAges.set(config.chains[id].usdcFeed.toLowerCase(), 86_436n);
+  await preflight(plan);
+  feedAges.set(config.chains[8453].ethFeed.toLowerCase(), 7_260n);
+  await assert.rejects(preflight(plan), /Stale or invalid price feed/);
 });
 test("activation rechecks mutable Circle minter backlinks even when all configured code pins match", async () => {
   wrongMinter = true;

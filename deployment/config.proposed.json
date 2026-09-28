@@ -27,7 +27,8 @@
       "sequencer": "0x0000000000000000000000000000000000000000",
       "router": "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
       "swapFee": "500",
-      "feedMaxAge": "86400",
+      "ethFeedMaxAge": "7200",
+      "usdcFeedMaxAge": "90000",
       "sequencerGrace": "0",
       "risk": {
         "borrowBps": "2000",
@@ -164,7 +165,8 @@
       "sequencer": "0xBCF85224fc0756B9Fa45aA7892530B47e10b6433",
       "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
       "swapFee": "500",
-      "feedMaxAge": "86400",
+      "ethFeedMaxAge": "7200",
+      "usdcFeedMaxAge": "90000",
       "sequencerGrace": "3600",
       "risk": {
         "borrowBps": "2000",

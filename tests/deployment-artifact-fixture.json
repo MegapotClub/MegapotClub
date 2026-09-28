@@ -221,7 +221,12 @@
             },
             {
               "internalType": "uint256",
-              "name": "maxAge_",
+              "name": "ethMaxAge_",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "usdcMaxAge_",
               "type": "uint256"
             },
             {

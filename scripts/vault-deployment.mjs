@@ -100,7 +100,8 @@ export function buildDeploymentPlan(config, compilation) {
       !min
     )
       throw new Error("Risk values violate contract bounds");
-    c.feedMaxAge = integer(raw.feedMaxAge, 1n);
+    c.ethFeedMaxAge = integer(raw.ethFeedMaxAge, 1n);
+    c.usdcFeedMaxAge = integer(raw.usdcFeedMaxAge, 1n);
     c.sequencerGrace = integer(raw.sequencerGrace, id === 1 ? 0n : 1n);
     c.swapFee = Number(integer(raw.swapFee, 1n, 2n ** 24n - 1n));
     chains[id] = c;
@@ -186,7 +187,8 @@ export function buildDeploymentPlan(config, compilation) {
         base.ethFeed,
         base.usdcFeed,
         base.sequencer,
-        base.feedMaxAge,
+        base.ethFeedMaxAge,
+        base.usdcFeedMaxAge,
         base.sequencerGrace,
       ],
     ],
@@ -202,7 +204,14 @@ export function buildDeploymentPlan(config, compilation) {
       1,
       1,
       "PriceGuard",
-      [l1.ethFeed, l1.usdcFeed, l1.sequencer, l1.feedMaxAge, l1.sequencerGrace],
+      [
+        l1.ethFeed,
+        l1.usdcFeed,
+        l1.sequencer,
+        l1.ethFeedMaxAge,
+        l1.usdcFeedMaxAge,
+        l1.sequencerGrace,
+      ],
     ],
     [
       "l1Eth",
@@ -513,7 +522,10 @@ export async function preflight(plan, { checkNonce = true, blocks } = {}) {
         })) !== expected
       )
         throw new Error("Unsupported token precision");
-    for (const feed of [cfg.ethFeed, cfg.usdcFeed]) {
+    for (const [feed, maxAge] of [
+      [cfg.ethFeed, cfg.ethFeedMaxAge],
+      [cfg.usdcFeed, cfg.usdcFeedMaxAge],
+    ]) {
       const r = await c.readContract({
         address: feed,
         abi: feedAbi,
@@ -524,7 +536,7 @@ export async function preflight(plan, { checkNonce = true, blocks } = {}) {
         r[1] <= 0n ||
         r[3] === 0n ||
         r[3] > block.timestamp ||
-        block.timestamp - r[3] > BigInt(cfg.feedMaxAge) ||
+        block.timestamp - r[3] > BigInt(maxAge) ||
         r[4] < r[0]
       )
         throw new Error("Stale or invalid price feed");

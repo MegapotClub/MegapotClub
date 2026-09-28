@@ -10,19 +10,21 @@ contract PriceGuard {
     IAggregator public immutable ethFeed;
     IAggregator public immutable usdcFeed;
     IAggregator public immutable sequencer;
-    uint256 public immutable maxAge;
+    // Each feed has its own age limit above its heartbeat; emergencySeal treats a stale feed as unsafe.
+    uint256 public immutable ethMaxAge;
+    uint256 public immutable usdcMaxAge;
     uint256 public immutable grace;
     uint256 public immutable ethScale;
     uint256 public immutable usdcScale;
     error InvalidOracle();
-    constructor(IAggregator eth_, IAggregator usdc_, IAggregator sequencer_, uint256 maxAge_, uint256 grace_) {
-        if (address(eth_).code.length == 0 || address(usdc_).code.length == 0 || maxAge_ == 0 ||
+    constructor(IAggregator eth_, IAggregator usdc_, IAggregator sequencer_, uint256 ethMaxAge_, uint256 usdcMaxAge_, uint256 grace_) {
+        if (address(eth_).code.length == 0 || address(usdc_).code.length == 0 || ethMaxAge_ == 0 || usdcMaxAge_ == 0 ||
             eth_.decimals() > 18 || usdc_.decimals() > 18 ||
             (address(sequencer_) != address(0) && (address(sequencer_).code.length == 0 || grace_ == 0))) revert InvalidOracle();
-        ethFeed = eth_; usdcFeed = usdc_; sequencer = sequencer_; maxAge = maxAge_; grace = grace_;
+        ethFeed = eth_; usdcFeed = usdc_; sequencer = sequencer_; ethMaxAge = ethMaxAge_; usdcMaxAge = usdcMaxAge_; grace = grace_;
         ethScale = 10 ** eth_.decimals(); usdcScale = 10 ** usdc_.decimals();
     }
-    function _price(IAggregator feed) private view returns (uint256) {
+    function _price(IAggregator feed, uint256 maxAge) private view returns (uint256) {
         (uint80 round, int256 answer,, uint256 updated, uint80 answered) = feed.latestRoundData();
         if (answer <= 0 || updated == 0 || updated > block.timestamp || block.timestamp - updated > maxAge || answered < round) revert InvalidOracle();
         return uint256(answer);
@@ -32,7 +34,7 @@ contract PriceGuard {
             (, int256 answer, uint256 started,,) = sequencer.latestRoundData();
             if (answer != 0 || started == 0 || started > block.timestamp || block.timestamp - started <= grace) revert InvalidOracle();
         }
-        return (Math.mulDiv(_price(ethFeed), 1e18, ethScale), Math.mulDiv(_price(usdcFeed), 1e18, usdcScale));
+        return (Math.mulDiv(_price(ethFeed, ethMaxAge), 1e18, ethScale), Math.mulDiv(_price(usdcFeed, usdcMaxAge), 1e18, usdcScale));
     }
     function ethToUsdc(uint256 weiAmount) external view returns (uint256) {
         (uint256 eth, uint256 usdc) = prices();

@@ -32,7 +32,8 @@ async function fixture(borrowBps = 2000n, remote = false) {
     ethFeed.address,
     usdcFeed.address,
     sequencer.address,
-    86_400n,
+    7200n,
+    90_000n,
     3600n,
   ]);
   const router = await h.deploy("MockRouter", [usdc.address, weth.address]);
@@ -200,7 +201,7 @@ test("stale prices, sequencer downtime and forged flash callbacks fail closed", 
     prices,
   } = h;
   await bootstrap();
-  await ethFeed.call("set", [2000n * 10n ** 8n, h.now() - 86401n]);
+  await ethFeed.call("set", [2000n * 10n ** 8n, h.now() - 7201n]);
   await assert.rejects(vault.call("leverage"), /InvalidOracle/);
   assert.equal(await vault.read("activeWeth"), 10n * E);
   await ethFeed.call("set", [2000n * 10n ** 8n, h.now()]);
@@ -219,6 +220,21 @@ test("stale prices, sequencer downtime and forged flash callbacks fail closed", 
     ),
     /Unauthorized/,
   );
+});
+test("a routine late USDC heartbeat round cannot force an emergency seal", async () => {
+  const h = await fixture();
+  const { vault, bootstrap, usdcFeed, prices, position } = h;
+  await bootstrap();
+  await vault.call("leverage");
+  // A USDC/USD heartbeat round routinely lands seconds after its 24-hour heartbeat.
+  await usdcFeed.call("set", [10n ** 8n, h.now() - 86_436n]);
+  assert.deepEqual(await prices.read("prices"), [2000n * E, E]);
+  await assert.rejects(vault.call("emergencySeal"), /WrongState/);
+  // A feed past its own limit is an oracle failure, which still permits the seal.
+  await usdcFeed.call("set", [10n ** 8n, h.now() - 90_001n]);
+  await assert.rejects(prices.read("prices"), /InvalidOracle/);
+  await vault.call("emergencySeal");
+  assert.equal(await position.read("draining"), true);
 });
 test("the last holder can exit all assets; rejected Ether delivery automatically preserves a WETH payment", async () => {
   const h = await fixture(0n);
