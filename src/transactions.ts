@@ -21,6 +21,7 @@ import { atEvmEndpoint, evmClient, type EvmClient } from "./evmClient.ts";
 import { reviewVault, type VaultReview } from "./vaults.ts";
 import { localId } from "./localId.ts";
 import { purchaseReceipt, claimReceipt } from "./purchaseReceipt.ts";
+import { accountOperations } from "./userOperation.ts";
 import { JACKPOT } from "./config.ts";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -478,6 +479,16 @@ export async function reconcile(
     if (!receipt) return;
     const tx = await c.getTransaction({ hash });
     const direct = tx.from.toLowerCase() === entry.account.toLowerCase();
+    // Smart-account wallets, including EIP-7702 upgraded EOAs, may execute the
+    // exact reviewed call as this account's operation inside an ERC-4337 bundle.
+    const operation = direct
+      ? undefined
+      : accountOperations(tx, receipt, entry.account)
+          .map((op) => ({
+            ...op,
+            call: op.calls.find((call) => sameCall(entry, call)),
+          }))
+          .find((op) => op.call);
     let originalNonce: number | undefined = entry.nonceConfirmed
       ? entry.nonce
       : undefined;
@@ -493,8 +504,11 @@ export async function reconcile(
       ? receipt.blockNumber >= BigInt(entry.recovery.fromBlock)
       : Number(receiptBlock.timestamp) * 1000 >= entry.createdAt - 30_000;
     if (replacementHash) {
-      if (!direct) throw new Error("wrongReplacement");
-      if (originalNonce !== undefined) {
+      if (operation) {
+        // A bundle's transaction nonce belongs to its bundler; only timing bounds attribution.
+        if (!afterAttempt) throw new Error("wrongReplacement");
+      } else if (!direct) throw new Error("wrongReplacement");
+      else if (originalNonce !== undefined) {
         if (tx.nonce !== originalNonce) throw new Error("wrongReplacement");
       } else {
         // Manual attribution of a wallet-provided hash is limited to the exact intended effect.
@@ -509,33 +523,40 @@ export async function reconcile(
       receiptBlock.hash !== receipt.blockHash
     )
       throw new Error("staleChain");
-    if (!direct) throw new Error("wrongReplacement");
-    if (
-      !sameCall(entry, tx) &&
-      (originalNonce === undefined || tx.nonce !== originalNonce)
-    )
-      throw new Error("wrongReplacement");
-    const state = !sameCall(entry, tx)
-      ? "replaced"
-      : receipt.status === "success"
+    if (!operation) {
+      if (!direct) throw new Error("wrongReplacement");
+      if (
+        !sameCall(entry, tx) &&
+        (originalNonce === undefined || tx.nonce !== originalNonce)
+      )
+        throw new Error("wrongReplacement");
+    }
+    const call = operation?.call ?? tx;
+    const logs = operation?.logs ?? receipt.logs;
+    const state = operation
+      ? operation.success
         ? "confirmed"
-        : "reverted";
+        : "reverted"
+      : !sameCall(entry, tx)
+        ? "replaced"
+        : receipt.status === "success"
+          ? "confirmed"
+          : "reverted";
     await write({
       ...entry,
       hash,
-      nonce: tx.nonce,
-      nonceConfirmed: true,
+      ...(operation ? {} : { nonce: tx.nonce, nonceConfirmed: true }),
       status: state,
       ...(state === "confirmed" && entry.kind === "purchase" && entry.purchase
         ? {
             purchaseReceipt: purchaseReceipt(
-              receipt.logs,
+              logs,
               restorePurchase(entry.purchase)!,
             ),
           }
         : {}),
       ...(state === "confirmed" && entry.kind === "claim"
-        ? { claimReceipt: claimReceipt(receipt.logs, entry.account) }
+        ? { claimReceipt: claimReceipt(logs, entry.account) }
         : {}),
     });
     if (state === "confirmed" && entry.kind === "claim") {
@@ -550,7 +571,7 @@ export async function reconcile(
           related.account.toLowerCase() === entry.account.toLowerCase() &&
           !related.hash &&
           UNRESOLVED.has(related.status) &&
-          sameCall(related, tx)
+          sameCall(related, call)
         )
           await write({ ...related, status: "superseded", resolvedBy: hash });
       }

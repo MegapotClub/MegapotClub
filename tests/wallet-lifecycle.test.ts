@@ -1,10 +1,11 @@
 import { test, mock, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import type { Review } from "../src/native.ts";
+import type { Action, Review } from "../src/native.ts";
 import { walletRequestRefused, walletError } from "../src/wallet.ts";
 import * as realNative from "../src/native.ts";
 import { createLocks } from "./fixtures/locks.ts";
-import { claimLogs } from "./fixtures/receipts.ts";
+import { claimLogs, purchaseLogs } from "./fixtures/receipts.ts";
+import { bundle } from "./fixtures/userOperations.ts";
 import { JACKPOT } from "../src/config.ts";
 
 const account = "0x1111111111111111111111111111111111111111" as const;
@@ -21,6 +22,7 @@ let eventCount = 0;
 let blockTimestamp = Math.floor(Date.now() / 1000);
 let transactionReads = 0;
 let eventQueries: unknown[] = [];
+let bundled: ReturnType<typeof bundle> | undefined;
 const storage = new Map<string, string>();
 const globals = ["localStorage", "window", "navigator"].map(
   (key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const,
@@ -57,21 +59,24 @@ const client = {
   getTransactionCount: async () => 7,
   getTransaction: async () => {
     transactionReads++;
-    return {
-      nonce: 9,
-      from: account,
-      to: JACKPOT,
-      input: "0x30fcc737",
-      value: 0n,
-    };
+    return (
+      bundled?.tx ?? {
+        nonce: 9,
+        from: account,
+        to: JACKPOT,
+        input: "0x30fcc737",
+        value: 0n,
+      }
+    );
   },
   waitForTransactionReceipt: async () => new Promise(() => {}),
-  getTransactionReceipt: async () => ({
-    status: "success",
-    blockNumber: 100n,
-    blockHash: hash,
-    logs: claimLogs(account, eventCount),
-  }),
+  getTransactionReceipt: async () =>
+    bundled?.receipt ?? {
+      status: "success",
+      blockNumber: 100n,
+      blockHash: hash,
+      logs: claimLogs(account, eventCount),
+    },
   getContractEvents: async (args: unknown) => {
     eventQueries.push(args);
     return Array.from({ length: eventCount }, () => ({
@@ -145,6 +150,7 @@ beforeEach(() => {
   eventCount = 0;
   transactionReads = 0;
   eventQueries = [];
+  bundled = undefined;
   blockTimestamp = Math.floor(Date.now() / 1000);
   quote = {
     account,
@@ -556,4 +562,64 @@ test("cancelling a slow preflight never opens a later wallet handoff", async (t)
   assert.equal(walletRequested, false);
   assert.equal(sent.length, 0);
   assert.equal(journals().length, 0);
+});
+
+const other = "0x3333333333333333333333333333333333333333" as const;
+function purchase(
+  recipient: `0x${string}` = account,
+  bonus = 1,
+): Extract<Action, { kind: "purchase" }> {
+  return {
+    kind: "purchase",
+    recipient,
+    referrer: realNative.CLUB_REFERRER,
+    drawId: 100n,
+    unitPrice: 1_000_000n,
+    orderId: `order-${bonus}`,
+    tickets: [{ numbers: [1, 2, 3, 4, 5], bonus }],
+  };
+}
+test("a smart-account purchase confirms from its own operation inside a shared bundle", async () => {
+  const mine = purchase(),
+    theirs = purchase(other, 2);
+  const [buy] = realNative.actionCalls(mine, 10n ** 12n);
+  quote = { ...quote, action: mine, calls: [buy] };
+  bundled = bundle([
+    {
+      sender: other,
+      calls: [realNative.actionCalls(theirs, 10n ** 12n)[0]],
+      logs: purchaseLogs(theirs, 100n, 5n),
+    },
+    { sender: account, calls: [buy], logs: purchaseLogs(mine, 100n, 9n) },
+  ]);
+  const entry = await submitReview(["https://base.example"], quote, 1);
+  assert.equal(entry.nonceConfirmed, undefined);
+  await reconcile(["https://base.example"], entry);
+  const done = journals()[0];
+  assert.equal(done.status, "confirmed");
+  assert.deepEqual(done.purchaseReceipt?.ticketIds, ["9"]);
+  // The bundler's transaction nonce never becomes the account's nonce.
+  assert.equal(done.nonce, 7);
+  assert.equal(done.nonceConfirmed, undefined);
+  assert.equal(sent.length, 1);
+});
+test("a bundle proves nothing unless this account's own operation carries the reviewed call", async () => {
+  const call = quote.calls[0];
+  bundled = bundle([
+    { sender: account, calls: [{ ...call, data: "0x12345678" }] },
+  ]);
+  const entry = await submitReview(["https://base.example"], quote, 1);
+  await assert.rejects(
+    reconcile(["https://base.example"], entry),
+    /wrongReplacement/,
+  );
+  bundled = bundle([{ sender: other, calls: [call] }]);
+  await assert.rejects(
+    reconcile(["https://base.example"], entry),
+    /wrongReplacement/,
+  );
+  assert.equal(journals()[0].status, "pending");
+  bundled = bundle([{ sender: account, calls: [call], success: false }]);
+  await reconcile(["https://base.example"], entry);
+  assert.equal(journals()[0].status, "reverted");
 });
