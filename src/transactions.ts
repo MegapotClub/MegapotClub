@@ -477,6 +477,7 @@ export async function reconcile(
     });
     if (!receipt) return;
     const tx = await c.getTransaction({ hash });
+    const direct = tx.from.toLowerCase() === entry.account.toLowerCase();
     let originalNonce: number | undefined = entry.nonceConfirmed
       ? entry.nonce
       : undefined;
@@ -488,21 +489,17 @@ export async function reconcile(
       }
     }
     const receiptBlock = await c.getBlock({ blockNumber: receipt.blockNumber });
+    const afterAttempt = entry.recovery
+      ? receipt.blockNumber >= BigInt(entry.recovery.fromBlock)
+      : Number(receiptBlock.timestamp) * 1000 >= entry.createdAt - 30_000;
     if (replacementHash) {
-      if (tx.from.toLowerCase() !== entry.account.toLowerCase())
-        throw new Error("wrongReplacement");
+      if (!direct) throw new Error("wrongReplacement");
       if (originalNonce !== undefined) {
         if (tx.nonce !== originalNonce) throw new Error("wrongReplacement");
       } else {
         // Manual attribution of a wallet-provided hash is limited to the exact intended effect.
         // Without a known original nonce, a cancellation/different call cannot prove replacement.
-        if (
-          !sameCall(entry, tx) ||
-          tx.nonce < entry.nonce ||
-          (entry.recovery
-            ? receipt.blockNumber < BigInt(entry.recovery.fromBlock)
-            : Number(receiptBlock.timestamp) * 1000 < entry.createdAt - 30_000)
-        )
+        if (!sameCall(entry, tx) || tx.nonce < entry.nonce || !afterAttempt)
           throw new Error("wrongReplacement");
       }
     }
@@ -512,20 +509,17 @@ export async function reconcile(
       receiptBlock.hash !== receipt.blockHash
     )
       throw new Error("staleChain");
-    if (tx.from.toLowerCase() !== entry.account.toLowerCase())
-      throw new Error("wrongReplacement");
+    if (!direct) throw new Error("wrongReplacement");
     if (
       !sameCall(entry, tx) &&
       (originalNonce === undefined || tx.nonce !== originalNonce)
     )
       throw new Error("wrongReplacement");
-    const state =
-      !sameCall(entry, tx) ||
-      tx.from.toLowerCase() !== entry.account.toLowerCase()
-        ? "replaced"
-        : receipt.status === "success"
-          ? "confirmed"
-          : "reverted";
+    const state = !sameCall(entry, tx)
+      ? "replaced"
+      : receipt.status === "success"
+        ? "confirmed"
+        : "reverted";
     await write({
       ...entry,
       hash,
