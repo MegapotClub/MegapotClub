@@ -885,6 +885,10 @@ export async function submitReview(
       reviewed = review.calls[0];
     onFreshReview?.(fresh);
     if (call.kind !== reviewed.kind) throw new Error("actionUpdated");
+    // buyTickets calldata carries no price, so an existing allowance could otherwise
+    // pay more than the reviewed total. Rollover at the same or a lower price proceeds.
+    if (fresh.action.kind === "purchase" && fresh.amount > review.amount)
+      throw new Error("priceChanged");
     if (
       call.to.toLowerCase() !== reviewed.to.toLowerCase() ||
       call.data !== reviewed.data ||

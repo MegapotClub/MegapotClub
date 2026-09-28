@@ -681,3 +681,38 @@ test("recovery never attributes a hash that another attempt already recorded", a
   );
   assert.equal(journals()[0].status, "unknown");
 });
+test("a purchase stops before the wallet when its fresh total exceeds the reviewed total", async () => {
+  const mine = purchase();
+  const reviewed = {
+    ...quote,
+    action: mine,
+    calls: [realNative.actionCalls(mine, 10n ** 12n)[0]],
+  };
+  quote = {
+    ...reviewed,
+    action: { ...mine, unitPrice: 2_000_000n },
+    amount: 2_000_000n,
+  };
+  let displayed: Review | undefined;
+  await assert.rejects(
+    submitReview(["https://base.example"], reviewed, 1, undefined, (fresh) => {
+      displayed = fresh;
+    }),
+    /priceChanged/,
+  );
+  assert.equal(displayed, quote);
+  assert.equal(sent.length, 0);
+  assert.equal(journals().length, 0);
+  // A rollover at the reviewed or a lower price keeps the order and proceeds.
+  quote = {
+    ...reviewed,
+    action: { ...mine, drawId: 101n, unitPrice: 900_000n },
+    amount: 900_000n,
+    position: { ...reviewed.position, draw: 101n },
+  };
+  assert.equal(
+    (await submitReview(["https://base.example"], reviewed, 1)).status,
+    "pending",
+  );
+  assert.equal(sent.length, 1);
+});
