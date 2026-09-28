@@ -623,3 +623,34 @@ test("a bundle proves nothing unless this account's own operation carries the re
   await reconcile(["https://base.example"], entry);
   assert.equal(journals()[0].status, "reverted");
 });
+test("hashless recovery finds a bundled claim and reads its payout from that operation alone", async () => {
+  quote = {
+    ...quote,
+    action: { kind: "claim", ids: [1n, 2n] },
+    calls: [{ ...quote.calls[0], kind: "claim" }],
+  };
+  walletFailure = new Error("response lost");
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /walletNoResponse/,
+  );
+  bundled = bundle([
+    {
+      sender: account,
+      calls: [{ ...quote.calls[0], data: "0x12345678" }],
+      logs: claimLogs(account, 3, 10n),
+    },
+    {
+      sender: account,
+      calls: [quote.calls[0]],
+      logs: claimLogs(account, 2),
+    },
+  ]);
+  eventCount = 1;
+  await findTransactionCandidates(["https://base.example"], journals()[0]);
+  assert.deepEqual(journals()[0].recovery?.candidates, [hash]);
+  await reconcile(["https://base.example"], journals()[0], hash);
+  assert.equal(journals()[0].status, "confirmed");
+  assert.deepEqual(journals()[0].claimReceipt?.ticketIds, ["1", "2"]);
+  assert.equal(sent.length, 1);
+});

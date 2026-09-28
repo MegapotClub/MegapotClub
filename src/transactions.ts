@@ -21,7 +21,7 @@ import { atEvmEndpoint, evmClient, type EvmClient } from "./evmClient.ts";
 import { reviewVault, type VaultReview } from "./vaults.ts";
 import { localId } from "./localId.ts";
 import { purchaseReceipt, claimReceipt } from "./purchaseReceipt.ts";
-import { accountOperations } from "./userOperation.ts";
+import { accountOperations, bundledCalls } from "./userOperation.ts";
 import { JACKPOT } from "./config.ts";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -643,9 +643,10 @@ export async function findTransactionCandidates(
       for (const hash of hashes) {
         const tx = await c.getTransaction({ hash });
         if (
-          tx.from.toLowerCase() === entry.account.toLowerCase() &&
-          tx.nonce >= entry.nonce &&
-          sameCall(entry, tx)
+          (tx.from.toLowerCase() === entry.account.toLowerCase() &&
+            tx.nonce >= entry.nonce &&
+            sameCall(entry, tx)) ||
+          bundledCalls(tx, entry.account).some((call) => sameCall(entry, call))
         )
           candidates.add(hash);
       }
