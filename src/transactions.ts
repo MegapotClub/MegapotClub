@@ -459,6 +459,16 @@ export function sameCall(
     b.value === BigInt(a.value ?? "0")
   );
 }
+/** A hash already recorded for another attempt is that attempt's evidence, never this one's. */
+function trackedElsewhere(entry: Journal, hash: string) {
+  return journals().some(
+    (j) =>
+      j.id !== entry.id &&
+      j.chainId === entry.chainId &&
+      j.account.toLowerCase() === entry.account.toLowerCase() &&
+      j.hash?.toLowerCase() === hash.toLowerCase(),
+  );
+}
 export async function reconcile(
   urls: string[],
   entry: Journal,
@@ -641,6 +651,7 @@ export async function findTransactionCandidates(
       if (hashes.length > 5) return;
       const candidates = new Set(entry.recovery!.candidates);
       for (const hash of hashes) {
+        if (trackedElsewhere(entry, hash)) continue;
         const tx = await c.getTransaction({ hash });
         if (
           (tx.from.toLowerCase() === entry.account.toLowerCase() &&
@@ -743,14 +754,19 @@ export function useTransactionRecovery(
         if (entry.hash)
           await reconcile(urls, entry, undefined, signal).catch(() => {});
         else {
-          if (!entry.recovery?.candidates.length)
+          // Keep searching while every stored candidate belongs to another attempt.
+          const open = (e: Journal) =>
+            (e.recovery?.candidates ?? []).filter(
+              (hash) => !trackedElsewhere(e, hash),
+            );
+          if (!open(entry).length)
             await findTransactionCandidates(urls, entry, signal).catch(
               () => {},
             );
           signal.throwIfAborted();
           const latest = journals().find((j) => j.id === entry.id);
           if (!latest || !UNRESOLVED.has(latest.status)) continue;
-          const hashes = latest.recovery?.candidates ?? [];
+          const hashes = open(latest);
           if (hashes.length) {
             const index = candidates.current.get(entry.id) ?? 0;
             candidates.current.set(entry.id, index + 1);

@@ -654,3 +654,26 @@ test("hashless recovery finds a bundled claim and reads its payout from that ope
   assert.deepEqual(journals()[0].claimReceipt?.ticketIds, ["1", "2"]);
   assert.equal(sent.length, 1);
 });
+test("recovery never attributes a hash that another attempt already recorded", async () => {
+  quote = {
+    ...quote,
+    action: { kind: "claim", ids: [1n] },
+    calls: [{ ...quote.calls[0], kind: "claim" }],
+  };
+  walletFailure = new Error("response lost");
+  await assert.rejects(
+    submitReview(["https://base.example"], quote, 1),
+    /walletNoResponse/,
+  );
+  walletFailure = null;
+  assert.equal(
+    (await submitReview(["https://base.example"], quote, 1)).hash,
+    hash,
+  );
+  const reads = transactionReads;
+  eventCount = 1;
+  await findTransactionCandidates(["https://base.example"], journals()[0]);
+  assert.equal(transactionReads, reads);
+  assert.deepEqual(journals()[0].recovery?.candidates, []);
+  assert.equal(journals()[0].status, "unknown");
+});
