@@ -675,5 +675,9 @@ test("recovery never attributes a hash that another attempt already recorded", a
   await findTransactionCandidates(["https://base.example"], journals()[0]);
   assert.equal(transactionReads, reads);
   assert.deepEqual(journals()[0].recovery?.candidates, []);
+  await assert.rejects(
+    reconcile(["https://base.example"], journals()[0], hash),
+    /wrongReplacement/,
+  );
   assert.equal(journals()[0].status, "unknown");
 });

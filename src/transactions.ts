@@ -478,6 +478,8 @@ export async function reconcile(
   if (!entry.hash && !replacementHash) throw new Error("invalidHash");
   if (replacementHash && !/^0x[0-9a-fA-F]{64}$/.test(replacementHash))
     throw new Error("invalidHash");
+  if (replacementHash && trackedElsewhere(entry, replacementHash))
+    throw new Error("wrongReplacement");
   const inspect = async (c: EvmClient | ReturnType<typeof nativeClient>) => {
     const hash = (replacementHash ?? entry.hash) as Hex;
     // A healthy RPC returning no receipt means pending/not yet indexed. It is
