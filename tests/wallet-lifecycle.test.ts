@@ -1,14 +1,10 @@
-import {
-  encodeAbiParameters,
-  encodeEventTopics,
-  parseAbiParameters,
-} from "viem";
 import { test, mock, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Review } from "../src/native.ts";
 import { walletRequestRefused, walletError } from "../src/wallet.ts";
 import * as realNative from "../src/native.ts";
 import { createLocks } from "./fixtures/locks.ts";
+import { claimLogs } from "./fixtures/receipts.ts";
 import { JACKPOT } from "../src/config.ts";
 
 const account = "0x1111111111111111111111111111111111111111" as const;
@@ -74,20 +70,7 @@ const client = {
     status: "success",
     blockNumber: 100n,
     blockHash: hash,
-    logs: eventCount
-      ? Array.from({ length: eventCount }, (_, i) => ({
-          address: JACKPOT,
-          topics: encodeEventTopics({
-            abi: realNative.jackpotAbi,
-            eventName: "TicketWinningsClaimed",
-            args: { userAddress: account, drawingId: 1n },
-          }),
-          data: encodeAbiParameters(
-            parseAbiParameters("uint256,uint256,bool,uint256"),
-            [BigInt(i + 1), 3n, false, 1_000_000n],
-          ),
-        }))
-      : [],
+    logs: claimLogs(account, eventCount),
   }),
   getContractEvents: async (args: unknown) => {
     eventQueries.push(args);
